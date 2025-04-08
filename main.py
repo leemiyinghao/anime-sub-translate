@@ -175,8 +175,8 @@ def translate(path: str, target_language: str) -> None:
         for subtitle_path, subtitle_format in tqdm(
             zip(subtitle_paths, subtitle_formats),
             desc="Translate files",
-            position=0,
             unit="file",
+            total=len(subtitle_paths),
         ):
             output_path = get_output_path(subtitle_path, target_language)
             if os.path.exists(output_path):
