@@ -23,19 +23,20 @@ def create_output_file_path(subtitle_file: str, language_postfix: str) -> str:
     return os.path.join(output_dir, output_file)
 
 
-def write_translated_subtitle(subtitle_file: str, translated_content: str, target_language: str) -> None:
+def get_output_path(subtitle_file: str, target_language: str) -> str:
+    """
+    Generates the output path for the translated subtitle file.
+    """
+    language_postfix = get_language_postfix(target_language)
+    return create_output_file_path(subtitle_file, language_postfix)
+
+def write_translated_subtitle(translated_content: str, output_path: str) -> None:
     """
     Writes the translated content to a new subtitle file with the language postfix.
     """
-    language_postfix = get_language_postfix(target_language)
-    output_path = create_output_file_path(subtitle_file, language_postfix)
-
     try:
         with open(output_path, 'w', encoding='utf-8') as file:
             file.write(translated_content.strip() + '\n')
-
-        print(f"Translated {subtitle_file} saved to {output_path}")
-
     except Exception as e:
         print(f"Error writing translated subtitle to {output_path}: {e}")
 
@@ -83,6 +84,10 @@ def translate_subtitle(path: str, target_language: str) -> None:
         print(f"Pre-translated Entries:\n{pre_translated_entries}\n")
 
         for subtitle_format, subtitle_file, subtitle_content in tqdm(list(zip(subtitle_formats, subtitle_files, subtitle_contents)), desc=f"Translate files in ...{path[-20:]}", unit="file", position=0):
+            output_path = get_output_path(subtitle_file, target_language)
+            if os.path.exists(output_path):
+                print(f"Output file {output_path} already exists. Skipping translation.")
+                continue
 
             translated_content = asyncio.run(translate_content(subtitle_content, target_language, pre_translated_entries))
 
@@ -92,7 +97,8 @@ def translate_subtitle(path: str, target_language: str) -> None:
             # try to fix known syntax errors caused by LLMs
             translated_content = subtitle_format.try_fix_syntax_error(translated_content)
         
-            write_translated_subtitle(subtitle_file, translated_content, target_language)
+            write_translated_subtitle(translated_content, output_path)
+            print(f"Translated content wrote: {output_path[-20:]}")
 
         print(f"All subtitles translated successfully ({len(subtitle_files)} files)")
     
