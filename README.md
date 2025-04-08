@@ -12,7 +12,7 @@ A script to translate anime subtitles from one language to another, primarily ta
 1.  Clone the repository:
 
 ```bash
-git clone <repository_url>
+git clone git@github.com:leemiyinghao/anime-sub-translate.git
 cd anime-sub-translate
 ```
 
