@@ -76,4 +76,4 @@ def find_files_from_path(path: str, ignore_postfix: str) -> List[str]:
             subtitle_files = [path]
         else:
             raise ValueError(f"Unsupported file format: {path}")
-    return list(filter(lambda path: (ignore_postfix == "") or (not path.endswith((f'{ignore_postfix}.srt', f'{ignore_postfix}.ssa', f'{ignore_postfix}.ass'))), subtitle_files))
+    return sorted(list(filter(lambda path: (ignore_postfix == "") or (not path.endswith((f'{ignore_postfix}.srt', f'{ignore_postfix}.ssa', f'{ignore_postfix}.ass'))), subtitle_files)))
