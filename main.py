@@ -56,7 +56,7 @@ def translate_content(subtitle_content: str, target_language: str, pre_translate
 
         # Translate this chunk
         translated_chunk = translate(chunk, target_language, pre_translated_entries)
-        translated_chunks.append(translated_chunk)
+        translated_chunks.append(translated_chunk.strip())
 
     translated_content = "\n".join(translated_chunks)
 
