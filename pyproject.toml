@@ -1,0 +1,9 @@
+[project]
+name = "anime-sub-translate-zh-tw"
+version = "0.1.0"
+description = "A anime subtitle translator script"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "litellm>=1.65.4.post1",
+]
