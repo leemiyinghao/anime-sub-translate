@@ -64,3 +64,17 @@ LLM_EXTRA_PROMPT=使用標準台灣繁體中文，不可使用簡體中文或中
 -   SRT (.srt)
 -   SSA (.ssa)
 -   ASS (.ass)
+
+## Development
+
+### Test
+
+```bash
+uv run -m coverage run -m unittest discover
+```
+
+### Read Coverage Report
+
+```bash
+uv run -m coverage report
+```
