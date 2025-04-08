@@ -47,7 +47,7 @@ async def translate(text: str, target_language: str, pretranslate: Optional[str]
     3. Maintain consistent translation of terms, names, and phrases throughout the text.
     4. For subtitle files, maintain the timing and structure of the original subtitles.
     6. It's not necessary to keep the original text in the translation as long as the meaning is preserved.
-    7. Do not include any extra formatted text or comments in the translation.
+    7. Do not include any extra formatted text or comments in the translation. Don't wrapthe translation in any code block or markdown.
     {extra_prompt}"""
 
             # Add name translation guidance if provided
