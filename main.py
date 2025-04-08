@@ -1,17 +1,24 @@
 import os, argparse, asyncio
-from llm import translate, translate_names
+from format.format import SubtitleFormat
+from llm import translate_context, translate_dialouges
 from format import parse_subtitle_file
-from utils import read_subtitle_file, split_into_chunks, find_files_from_path
+from utils import read_subtitle_file, find_files_from_path
 import logging
 from tqdm.auto import tqdm
+from utils import chunk_dialogues, save_pre_translate_store, load_pre_translate_store
+from subtitle_types import PreTranslatedContext
+from typing import Iterable
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 
 def get_language_postfix(target_language: str) -> str:
     """
     Gets the language postfix from environment variables or defaults to the target language.
     """
     return os.environ.get("LANGUAGE_POSTFIX", target_language)
+
 
 def create_output_file_path(subtitle_file: str, language_postfix: str) -> str:
     """
@@ -30,91 +37,183 @@ def get_output_path(subtitle_file: str, target_language: str) -> str:
     language_postfix = get_language_postfix(target_language)
     return create_output_file_path(subtitle_file, language_postfix)
 
+
 def write_translated_subtitle(translated_content: str, output_path: str) -> None:
     """
     Writes the translated content to a new subtitle file with the language postfix.
     """
     try:
-        with open(output_path, 'w', encoding='utf-8') as file:
-            file.write(translated_content.strip() + '\n')
+        with open(output_path, "w", encoding="utf-8") as file:
+            file.write(translated_content.strip() + "\n")
     except Exception as e:
         print(f"Error writing translated subtitle to {output_path}: {e}")
 
 
-async def translate_content(subtitle_content: str, target_language: str, pre_translated_entries: str) -> str:
+async def translate_file(
+    subtitle_content: SubtitleFormat,
+    target_language: str,
+    pre_translated_context: Iterable[PreTranslatedContext],
+) -> SubtitleFormat:
     """
     Translates the subtitle content in chunks.
     """
-    # Use split_into_chunks to split the content into manageable chunks
-    max_chunk_size = 8_000  # Characters per chunk (adjust based on token limits)
-    chunks = split_into_chunks(subtitle_content, max_chunk_size)
+    # Characters per chunk (adjust based on token limits)
+    #
+    # We use characters instead of tokens, because each model has
+    # different tokenization process, and it's fine to assume tokens
+    # will be less than characters
+    #
+    # Since we are translating, we can assume that the output tokens
+    # will be similar to the input tokens.
+    max_chunk_size = int(os.environ.get("MAX_OUTPUT_TOKEN", "5000"))
+    chunks = chunk_dialogues(subtitle_content.dialogues(), max_chunk_size)
+    logger.info(f"Total chunks: {len(chunks)}")
 
-    translated_chunks = await asyncio.gather(*[translate(chunk, target_language, pre_translated_entries, idx + 1) for idx, chunk in enumerate(chunks)])
+    tasks = []
+    for idx, dialogue_chunk in enumerate(chunks):
+        progress_bar = None
+        if os.environ.get("VERBOSE", "0") == "1":
+            progress_bar = tqdm(
+                desc=f"Translating chunk {idx + 1}/{len(chunks)}",
+                position=idx + 1,
+                total=len(dialogue_chunk),
+            )
+        tasks.append(
+            translate_dialouges(
+                original=dialogue_chunk,
+                target_language=target_language,
+                pretranslate=pre_translated_context,
+                progress_bar=progress_bar,
+            )
+        )
+    translated_dialogues = await asyncio.gather(*tasks)
+    for translated_chunk in translated_dialogues:
+        subtitle_content.update(translated_chunk)
 
-    translated_content = "\n".join([c.strip() for c in translated_chunks])
-
-    return translated_content
+    return subtitle_content
 
 
-
-def translate_subtitle(path: str, target_language: str) -> None:
+async def translate_prepare(
+    subtitle_contents: Iterable[SubtitleFormat],
+    target_language: str,
+) -> list[PreTranslatedContext]:
     """
-     Translates the subtitles in the given file to the target language.
-         :param path: Path to the subtitle files. File can be .srt, .ssa, .ass.
-         :param target_language: Target language for translation.
-         :param output_path: Path to save the translated subtitles.
+    Prepares the translation by translating the context.
+    """
+
+    # Characters per chunk (adjust based on token limits)
+    #
+    # We use characters instead of tokens, because each model has
+    # different tokenization process, and it's fine to assume tokens
+    # will be less than characters
+    #
+    # Since we are only extracting context, output tokens will be far
+    # less than input tokens. The output tokens is ignorable.
+    max_chunk_size = int(os.environ.get("MAX_INPUT_TOKEN", "5000000"))
+    dialogues = []
+    for subtitle_content in subtitle_contents:
+        dialogues.extend(subtitle_content.dialogues())
+    chunks = chunk_dialogues(dialogues, max_chunk_size)
+
+    pre_translated_context = []
+    for idx, dialogue_chunk in enumerate(chunks):
+        progress_bar = tqdm(
+            desc=f"Pre-translating context {idx + 1}/{len(chunks)}",
+        )
+        context = await translate_context(
+            original=dialogue_chunk,
+            target_language=target_language,
+            progress_bar=progress_bar,
+            previous_translated=pre_translated_context,
+        )
+        pre_translated_context.extend(list(context))
+
+    return pre_translated_context
+
+
+def translate(path: str, target_language: str) -> None:
+    """
+    Translates the subtitles in the given file to the target language.
+        :param path: Path to the subtitle files. File can be .srt, .ssa, .ass.
+        :param target_language: Target language for translation.
+        :param output_path: Path to save the translated subtitles.
     """
 
     try:
-        subtitle_files = find_files_from_path(path, get_language_postfix(target_language))
-        if not subtitle_files:
-            print(f"No subtitle files found in {path}")
+        subtitle_paths = find_files_from_path(
+            path, get_language_postfix(target_language)
+        )
+        if not subtitle_paths:
+            logger.error(f"No subtitles found in {subtitle_paths}")
             return
 
         # read all files
         subtitle_contents = []
-        for subtitle_file in subtitle_files:
-            content = read_subtitle_file(subtitle_file)
+        for subtitle_path in subtitle_paths:
+            content = read_subtitle_file(subtitle_path)
             subtitle_contents.append(content)
-        
-        # Pack pre-translate request
-        subtitle_formats = [parse_subtitle_file(file) for file in subtitle_files]
-        pre_translate_requests = [format.dialogue(content) for (format, content) in zip(subtitle_formats, subtitle_contents)]
-        pre_translated_entries = translate_names('\n'.join(pre_translate_requests), target_language)
-        print(f"Pre-translated Entries:\n{pre_translated_entries}\n")
 
-        for subtitle_format, subtitle_file, subtitle_content in tqdm(list(zip(subtitle_formats, subtitle_files, subtitle_contents)), desc=f"Translate files in ...{path[-20:]}", unit="file", position=0):
-            output_path = get_output_path(subtitle_file, target_language)
+        subtitle_formats = [parse_subtitle_file(file) for file in subtitle_paths]
+
+        # pre-translate context
+        pre_translate_context = None
+        if stored := load_pre_translate_store(path):
+            pre_translate_context = stored
+        else:
+            pre_translate_context = asyncio.run(
+                translate_prepare(subtitle_formats, target_language)
+            )
+            save_pre_translate_store(path, pre_translate_context)
+
+        # Print pre-translate context
+        logger.info("pre-translate context:")
+        for context in pre_translate_context:
+            logger.info(
+                f"  {context['original']} -> {context['translated']}: {context['description']}"
+            )
+
+        for subtitle_path, subtitle_format in tqdm(
+            zip(subtitle_paths, subtitle_formats),
+            desc="Translate files",
+            position=0,
+            unit="file",
+        ):
+            output_path = get_output_path(subtitle_path, target_language)
             if os.path.exists(output_path):
-                print(f"Output file {output_path} already exists. Skipping translation.")
+                logger.info(f"Output file {output_path} already exists.")
                 continue
 
-            translated_content = asyncio.run(translate_content(subtitle_content, target_language, pre_translated_entries))
+            translated_content = asyncio.run(
+                translate_file(subtitle_format, target_language, pre_translate_context)
+            )
 
             # replace Title line in support format like ASS/SSA
-            translated_content = subtitle_format.replace_title(translated_content, f"{target_language} (AI Translated)")
+            translated_content.update_title(f"{target_language} (AI Translated)")
 
-            # try to fix known syntax errors caused by LLMs
-            translated_content = subtitle_format.try_fix_syntax_error(translated_content)
-        
-            write_translated_subtitle(translated_content, output_path)
-            print(f"Translated content wrote: {output_path[-20:]}")
+            write_translated_subtitle(translated_content.as_str(), output_path)
+            logger.info(f"Translated content wrote: {output_path[-60:]}")
 
-        print(f"All subtitles translated successfully ({len(subtitle_files)} files)")
-    
+        print(f"All subtitles translated successfully ({len(subtitle_paths)} files)")
+
     except Exception as e:
         print(f"Error translating subtitles: {e}")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Translate subtitles to a target language.")
+    parser = argparse.ArgumentParser(
+        description="Translate subtitles to a target language."
+    )
+    parser.add_argument(
+        "target_language", type=str, help="Target language for translation."
+    )
     parser.add_argument("path", type=str, help="Path to the subtitle files.")
-    parser.add_argument("target_language", type=str, help="Target language for translation.")
 
     args = parser.parse_args()
 
     # loading extra environment from .env file, we need some environment variables like OPENROUTER_API_KEY for litellm
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
         print("Environment variables loaded from .env file")
     except ImportError:
@@ -122,4 +221,8 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error loading .env file: {e}")
 
-    translate_subtitle(args.path, args.target_language)
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
+    translate(args.path, args.target_language)
