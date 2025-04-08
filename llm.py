@@ -55,8 +55,9 @@ async def translate(text: str, target_language: str, pretranslate: Optional[str]
                     token = part.choices[0].delta.content or ""
                     chunks.append(token)
                     pbar.update(len(token))
-                pbar.close()
-            return ''.join(chunks)
+                result = ''.join(chunks)
+                pbar.total = len(result)
+                return result
 
         except Exception as e:
             print(f"Translation error: {e}")

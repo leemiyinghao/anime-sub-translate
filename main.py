@@ -48,7 +48,7 @@ async def translate_content(subtitle_content: str, target_language: str, pre_tra
     max_chunk_size = 8_000  # Characters per chunk (adjust based on token limits)
     chunks = split_into_chunks(subtitle_content, max_chunk_size)
 
-    translated_chunks = await asyncio.gather(*[translate(chunk, target_language, pre_translated_entries, idx) for idx, chunk in enumerate(chunks)])
+    translated_chunks = await asyncio.gather(*[translate(chunk, target_language, pre_translated_entries, idx + 1) for idx, chunk in enumerate(chunks)])
 
     translated_content = "\n".join([c.strip() for c in translated_chunks])
 
@@ -82,7 +82,7 @@ def translate_subtitle(path: str, target_language: str) -> None:
         pre_translated_entries = translate_names('\n'.join(pre_translate_requests), target_language)
         print(f"Pre-translated Entries:\n{pre_translated_entries}\n")
 
-        for subtitle_format, subtitle_file, subtitle_content in tqdm(list(zip(subtitle_formats, subtitle_files, subtitle_contents)), desc=f"Translate files in ...{path[-20:]}", unit="file"):
+        for subtitle_format, subtitle_file, subtitle_content in tqdm(list(zip(subtitle_formats, subtitle_files, subtitle_contents)), desc=f"Translate files in ...{path[-20:]}", unit="file", position=0):
 
             translated_content = asyncio.run(translate_content(subtitle_content, target_language, pre_translated_entries))
 
