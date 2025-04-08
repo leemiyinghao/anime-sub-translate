@@ -112,7 +112,7 @@ Important instructions:
 3. For names that should not be translated, indicate they should remain as is.
 4. Format your response as one name per line with the format: {{ORIGINAL_NAME}} -> {{TRANSLATED_NAME}}
 5. If a name should not be translated, use: {{ORIGINAL_NAME}} -> {{ORIGINAL_NAME}}
-6. Only include actual names, not common nouns or other text.
+6. Only include actual names of entities, not common nouns, sentences or other text.
 {extra_prompt}"""},
                 {"role": "user", "content": text}
             ]
