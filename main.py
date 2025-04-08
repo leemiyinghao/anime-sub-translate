@@ -1,84 +1,79 @@
-import os, re, argparse
-from typing import List
+import os, argparse
 from llm import translate, translate_names
 from format import parse_subtitle_file
+from utils import read_subtitle_file, split_into_chunks, find_files_from_path
+import logging
 
-def split_into_chunks(text: str, max_chunk_size: int) -> list:
-    """
-    Splits the text into chunks of a specified size.
-        :param text: The text to split.
-        :param max_chunk_size: The maximum size of each chunk.
-        :return: A list of text chunks.
-    """
-    # Split the text into lines
-    lines = text.splitlines(True)  # Keep the newline characters
-    
-    chunks = []
-    current_chunk = ""
-    
-    # Process each line
-    for line in lines:
-        # If adding this line would exceed the limit, start a new chunk
-        if len(current_chunk) + len(line) > max_chunk_size:
-            # If the current line is too long by itself, we need to split it
-            if len(line) > max_chunk_size:
-                # Add the current chunk to chunks if it's not empty
-                if current_chunk:
-                    chunks.append(current_chunk)
-                
-                # Split the long line into smaller pieces
-                remaining_line = line
-                while len(remaining_line) > 0:
-                    # Take a piece that fits in the chunk size
-                    piece_size = min(max_chunk_size, len(remaining_line))
-                    chunks.append(remaining_line[:piece_size])
-                    remaining_line = remaining_line[piece_size:]
-                
-                # Reset current chunk
-                current_chunk = ""
-            else:
-                # Add the current chunk to chunks and start a new one with this line
-                chunks.append(current_chunk)
-                current_chunk = line
-        else:
-            # Add the line to the current chunk
-            current_chunk += line
-    
-    # Add the last chunk if it's not empty
-    if current_chunk:
-        chunks.append(current_chunk)
-    
-    return chunks
+logger = logging.getLogger(__name__)
 
-def find_files_from_path(path: str, ignore_postfix: str) -> List[str]:
-    # Check if path is a directory or a file
-    subtitle_files = []
-    if os.path.isdir(path):
-        # Find all subtitle files in the directory
-        for file in os.listdir(path):
-            if file.endswith(('.srt', '.ssa', '.ass')):
-                subtitle_files.append(os.path.join(path, file))
-    else:
-        # Single file mode
-        if path.endswith(('.srt', '.ssa', '.ass')):
-            subtitle_files = [path]
-        else:
-            raise ValueError(f"Unsupported file format: {path}")
-    return list(filter(lambda path: not path.endswith((f'{ignore_postfix}.srt', f'{ignore_postfix}.ssa', f'{ignore_postfix}.ass')), subtitle_files))
+def get_language_postfix(target_language: str) -> str:
+    """
+    Gets the language postfix from environment variables or defaults to the target language.
+    """
+    return os.environ.get("LANGUAGE_POSTFIX", target_language)
+
+def create_output_file_path(subtitle_file: str, language_postfix: str) -> str:
+    """
+    Creates the output file path for the translated subtitle file.
+    """
+    base_name, ext = os.path.splitext(subtitle_file)
+    output_file = f"{base_name}.{language_postfix}{ext}"
+    output_dir = os.path.dirname(subtitle_file)
+    return os.path.join(output_dir, output_file)
+
+
+def write_translated_subtitle(subtitle_file: str, translated_content: str, target_language: str) -> None:
+    """
+    Writes the translated content to a new subtitle file with the language postfix.
+    """
+    language_postfix = get_language_postfix(target_language)
+    output_path = create_output_file_path(subtitle_file, language_postfix)
+
+    try:
+        with open(output_path, 'w', encoding='utf-8') as file:
+            file.write(translated_content.strip() + '\n')
+
+        print(f"Translated {subtitle_file} saved to {output_path}")
+
+    except Exception as e:
+        print(f"Error writing translated subtitle to {output_path}: {e}")
+
+
+
+def translate_content(subtitle_content: str, target_language: str, pre_translated_entries: str) -> str:
+    """
+    Translates the subtitle content in chunks.
+    """
+    print(f"Translating content in chunks...")
+
+    # Use split_into_chunks to split the content into manageable chunks
+    max_chunk_size = 8_000  # Characters per chunk (adjust based on token limits)
+    chunks = split_into_chunks(subtitle_content, max_chunk_size)
+
+    translated_chunks = []
+    for i, chunk in enumerate(chunks):
+        print(f"Translating chunk {i+1}/{len(chunks)}...")
+
+        # Translate this chunk
+        translated_chunk = translate(chunk, target_language, pre_translated_entries)
+        translated_chunks.append(translated_chunk)
+
+    translated_content = "\n".join(translated_chunks)
+
+    return translated_content
+
+
 
 def translate_subtitle(path: str, target_language: str) -> None:
     """
-    Translates the subtitles in the given file to the target language.
-        :param path: Path to the subtitle files. File can be .srt, .ssa, .ass.
-        :param target_language: Target language for translation.
-        :param output_path: Path to save the translated subtitles.
+     Translates the subtitles in the given file to the target language.
+         :param path: Path to the subtitle files. File can be .srt, .ssa, .ass.
+         :param target_language: Target language for translation.
+         :param output_path: Path to save the translated subtitles.
     """
 
     try:
-        # Get language postfix from environment or use target_language
-        language_postfix = os.environ.get("LANGUAGE_POSTFIX", target_language)
-        
-        subtitle_files = find_files_from_path(path, language_postfix)
+        subtitle_files = find_files_from_path(path, target_language)
         if not subtitle_files:
             print(f"No subtitle files found in {path}")
             return
@@ -86,9 +81,8 @@ def translate_subtitle(path: str, target_language: str) -> None:
         # read all files
         subtitle_contents = []
         for subtitle_file in subtitle_files:
-            with open(subtitle_file, 'r') as file:
-                content = file.read()
-                subtitle_contents.append(content)
+            content = read_subtitle_file(subtitle_file)
+            subtitle_contents.append(content)
         
         # Pack pre-translate request
         subtitle_formats = [parse_subtitle_file(file) for file in subtitle_files]
@@ -98,38 +92,12 @@ def translate_subtitle(path: str, target_language: str) -> None:
 
         for subtitle_format, subtitle_file, subtitle_content in zip(subtitle_formats, subtitle_files, subtitle_contents):
 
-            print(f"Translating content in chunks...")
-
-            # Use split_into_chunks to split the content into manageable chunks
-            max_chunk_size = 8_000  # Characters per chunk (adjust based on token limits)
-            chunks = split_into_chunks(subtitle_content, max_chunk_size)
-
-            translated_chunks = []
-            for i, chunk in enumerate(chunks):
-                print(f"Translating chunk {i+1}/{len(chunks)}...")
-
-                # Translate this chunk
-                translated_chunk = translate(chunk, target_language, pre_translated_entries)
-                translated_chunks.append(translated_chunk)
-
-            translated_content = "\n".join(translated_chunks)
+            translated_content = translate_content(subtitle_content, target_language, pre_translated_entries)
 
             # replace Title line in support format like ASS/SSA
             translated_content = subtitle_format.replace_title(translated_content, f"{target_language} (AI Translated)")
         
-            # Create output filename with language postfix
-            base_name, ext = os.path.splitext(subtitle_file)
-            output_file = f"{base_name}.{language_postfix}{ext}"
-            
-            
-            output_dir = os.path.dirname(subtitle_file)
-            full_output_path = os.path.join(output_dir, output_file)
-            
-            # Write the translated content
-            with open(full_output_path, 'w', encoding='utf-8') as file:
-                file.write(translated_content.strip() + '\n')
-            
-            print(f"Translated {subtitle_file} saved to {full_output_path}")
+            write_translated_subtitle(subtitle_file, translated_content, target_language)
 
         print(f"All subtitles translated successfully ({len(subtitle_files)} files)")
     
