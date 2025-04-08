@@ -1,10 +1,28 @@
-import os, time
+import os, time, re
 from typing import Optional
 
 import litellm
 from tqdm import tqdm
 
 RETRY_TIMES = 20
+
+def simple_sanity_check(content: str) -> bool:
+    """
+    Perform a simple sanity check on the content.
+    :param content: The content to check.
+    :return: True if the content is valid, False otherwise.
+    """
+    # Check if the content is empty or contains only whitespace
+    if not content.strip():
+            return False
+    # Check if the content is too long
+    if len(content) > 10000:
+            return False
+    # Check if the content contains invalid characters
+    re_invalid = re.compile(r'```')
+    if re_invalid.search(content):
+            return False
+    return True
 
 async def translate(text: str, target_language: str, pretranslate: Optional[str] = None, idx: Optional[int] = None) -> str:
     """
@@ -56,6 +74,8 @@ async def translate(text: str, target_language: str, pretranslate: Optional[str]
                     chunks.append(token)
                     pbar.update(len(token))
                 result = ''.join(chunks)
+                if not simple_sanity_check(result):
+                    raise ValueError("Translation failed sanity check.")
                 pbar.total = len(result)
                 return result
 
