@@ -1,4 +1,4 @@
-import os, argparse
+import os, argparse, asyncio
 from llm import translate, translate_names
 from format import parse_subtitle_file
 from utils import read_subtitle_file, split_into_chunks, find_files_from_path
@@ -40,8 +40,7 @@ def write_translated_subtitle(subtitle_file: str, translated_content: str, targe
         print(f"Error writing translated subtitle to {output_path}: {e}")
 
 
-
-def translate_content(subtitle_content: str, target_language: str, pre_translated_entries: str) -> str:
+async def translate_content(subtitle_content: str, target_language: str, pre_translated_entries: str) -> str:
     """
     Translates the subtitle content in chunks.
     """
@@ -49,13 +48,9 @@ def translate_content(subtitle_content: str, target_language: str, pre_translate
     max_chunk_size = 8_000  # Characters per chunk (adjust based on token limits)
     chunks = split_into_chunks(subtitle_content, max_chunk_size)
 
-    translated_chunks = []
-    for chunk in tqdm(chunks, desc="Translate content", unit="chunk"):
-        # Translate this chunk
-        translated_chunk = translate(chunk, target_language, pre_translated_entries)
-        translated_chunks.append(translated_chunk.strip())
+    translated_chunks = await asyncio.gather(*[translate(chunk, target_language, pre_translated_entries, idx) for idx, chunk in enumerate(chunks)])
 
-    translated_content = "\n".join(translated_chunks)
+    translated_content = "\n".join([c.strip() for c in translated_chunks])
 
     return translated_content
 
@@ -89,7 +84,7 @@ def translate_subtitle(path: str, target_language: str) -> None:
 
         for subtitle_format, subtitle_file, subtitle_content in tqdm(list(zip(subtitle_formats, subtitle_files, subtitle_contents)), desc=f"Translate files in ...{path[-20:]}", unit="file"):
 
-            translated_content = translate_content(subtitle_content, target_language, pre_translated_entries)
+            translated_content = asyncio.run(translate_content(subtitle_content, target_language, pre_translated_entries))
 
             # replace Title line in support format like ASS/SSA
             translated_content = subtitle_format.replace_title(translated_content, f"{target_language} (AI Translated)")

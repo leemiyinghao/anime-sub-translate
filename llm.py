@@ -1,11 +1,12 @@
 import os, time
+from typing import Optional
 
 import litellm
 from tqdm import tqdm
 
 RETRY_TIMES = 20
 
-def translate(text: str, target_language: str, pretranslate: str | None = None) -> str:
+async def translate(text: str, target_language: str, pretranslate: Optional[str] = None, idx: Optional[int] = None) -> str:
     """
         Translates the given text to the target language using litellm.
         :param text: The text to translate.
@@ -13,7 +14,6 @@ def translate(text: str, target_language: str, pretranslate: str | None = None) 
         :param pretranslate: Optional pre-translation important names.
         :return: The translated text.
     """
-
     for retry in range(RETRY_TIMES):
         try:
             # Get model from environment variable or use default
@@ -38,7 +38,7 @@ def translate(text: str, target_language: str, pretranslate: str | None = None) 
     8. Use the following translations for names and terms consistently:
     {pretranslate}"""
 
-            response = litellm.completion(
+            response = await litellm.acompletion(
                 n=1,
                 model=model,
                 messages=[
@@ -48,9 +48,14 @@ def translate(text: str, target_language: str, pretranslate: str | None = None) 
                 stream=True
             )
             chunks = []
-            for part in tqdm(response, unit="tokens"):
-                token = part.choices[0].delta.content or ""
-                chunks.append(token)
+
+            desc = f"[{idx}] Translating..." if idx is not None else "Translating..."
+            with tqdm(total=len(text), unit="chars", desc=desc, position=idx) as pbar:
+                async for part in response: # type: ignore
+                    token = part.choices[0].delta.content or ""
+                    chunks.append(token)
+                    pbar.update(len(token))
+                pbar.close()
             return ''.join(chunks)
 
         except Exception as e:
