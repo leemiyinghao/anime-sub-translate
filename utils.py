@@ -50,9 +50,9 @@ def split_into_chunks(text: str, max_chunk_size: int) -> list:
             _handle_long_line(line, max_chunk_size, chunks)
             current_chunk = ""
         else:
-            current_chunk = _process_line(line.rstrip('\n'), max_chunk_size, current_chunk, chunks)
+            current_chunk = _process_line(line, max_chunk_size, current_chunk, chunks)
     current_chunk = _add_chunk(current_chunk, chunks)
-    return chunks
+    return [chunk.rstrip('\n') for chunk in chunks]
 
 def read_subtitle_file(subtitle_file: str) -> str:
     """
