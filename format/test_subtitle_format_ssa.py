@@ -149,6 +149,15 @@ Dialogue: 0,0:00:06.00,0:00:10.00,Another line in a different position,Default,,
         expected = "This text is in a different position\nAnother line in a different position"
         result = self.ssa_format.dialogue(different_format_ssa)
         self.assertEqual(result, expected)
+    
+    def test_try_fix_syntax_error(self):
+        ssa_format = SubtitleFormatSSA()
+        raw = "Title: test\n\nDialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,test"
+        fixed = ssa_format.try_fix_syntax_error(raw)
+        self.assertEqual(fixed, "Title: test\nDialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,test")
+        raw = "Title: test\nDialogue: 0,2:22.22,3:33.33,Default,,0,0,0,,test"
+        fixed = ssa_format.try_fix_syntax_error(raw)
+        self.assertEqual(fixed, "Title: test\nDialogue: 0,0:02:22.22,0:03:33.33,Default,,0,0,0,,test")
 
 if __name__ == '__main__':
     unittest.main()

@@ -96,6 +96,9 @@ def translate_subtitle(path: str, target_language: str) -> None:
 
             # replace Title line in support format like ASS/SSA
             translated_content = subtitle_format.replace_title(translated_content, f"{target_language} (AI Translated)")
+
+            # try to fix known syntax errors caused by LLMs
+            translated_content = subtitle_format.try_fix_syntax_error(translated_content)
         
             write_translated_subtitle(subtitle_file, translated_content, target_language)
 

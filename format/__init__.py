@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 class SubtitleFormat:
     """
     SubtitleFormat is a class that represents the format of a subtitle file.
@@ -27,6 +28,14 @@ class SubtitleFormat:
         :param raw: The raw text of the subtitle file.
         :param title: The new title to replace the old one.
         :return: The raw text with the title replaced.
+        """
+        return raw
+
+    def try_fix_syntax_error(self, raw: str) -> str:
+        """
+        Attempts to fix syntax errors in the raw text of the subtitle file.
+        :param raw: The raw text of the subtitle file.
+        :return: The raw text with syntax errors fixed.
         """
         return raw
 
@@ -145,6 +154,31 @@ class SubtitleFormatSSA(SubtitleFormat):
         # Replace the title in the Script Info section
         return re.sub(r'(Title:\s*).*', r'\1' + title, raw)
 
+    def try_fix_syntax_error(self, raw: str) -> str:
+        fixed = re.sub(r'\n+', '\n', raw) # Replace multiple newlines with a single newline
+            
+        return '\n'.join([self.fix_line(line) for line in fixed.splitlines()])
+
+    def fix_line(self, raw: str) -> str:
+        """
+        Fixes a single line in the SSA subtitle file.
+        """
+        tokens = raw.split(',')
+        return ','.join([self.fix_token(token) for token in tokens])
+
+    def fix_token(self, token: str) -> str:
+        """
+        Fixes a single token in the SSA subtitle file.
+        """
+        # Fix incorrect timecode
+        # for example, "00:01.00" to "0:00:01.00"
+        if re.match(r'\d{1,2}:\d{2}\.\d{2}', token):
+            # parse the time with time.strptime
+            parsed_time = datetime.strptime(token, '%M:%S.%f')
+            # reformat the time with time.strftime
+            return f"{parsed_time.hour}:{parsed_time.minute:>02}:{parsed_time.second:>02}.{int(parsed_time.microsecond/10000):>02}"
+        return token
+
 def parse_subtitle_file(path: str) -> SubtitleFormat:
     """
     Parses the subtitle file and returns the appropriate SubtitleFormat object.
@@ -153,3 +187,4 @@ def parse_subtitle_file(path: str) -> SubtitleFormat:
         if subtitle_format.match(path):
             return subtitle_format
     raise ValueError(f"Unsupported subtitle format for file: {path}")
+
