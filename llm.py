@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 RETRY_TIMES = 20
 
-def simple_sanity_check(content: str) -> bool:
+def simple_sanity_check(raw: str, content: str) -> bool:
     """
     Perform a simple sanity check on the content.
     :param content: The content to check.
@@ -22,6 +22,9 @@ def simple_sanity_check(content: str) -> bool:
     re_invalid = re.compile(r'```')
     if re_invalid.search(content):
             return False
+    # Check if any missing lines
+    if len(content.splitlines()) != len(raw.splitlines()):
+        return False
     return True
 
 async def translate(text: str, target_language: str, pretranslate: Optional[str] = None, idx: Optional[int] = None) -> str:
@@ -74,7 +77,7 @@ async def translate(text: str, target_language: str, pretranslate: Optional[str]
                     chunks.append(token)
                     pbar.update(len(token))
                 result = ''.join(chunks)
-                if not simple_sanity_check(result):
+                if not simple_sanity_check(text.strip(), result.strip()):
                     raise ValueError("Translation failed sanity check.")
                 pbar.total = len(result)
                 return result
