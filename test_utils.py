@@ -40,7 +40,7 @@ class TestUtils(unittest.TestCase):
             srt_file_path = os.path.join(test_dir, "test_subtitle.srt")
             
 
-            ssa_file_path = os.path.join(test_dir, "test_subtitle.ssa")
+            ssa_file_path = os.path.join(test_dir, "test_subtitle.translated.ssa")
             txt_file_path = os.path.join(test_dir, "not_subtitle.txt")
 
             open(srt_file_path, 'w').close()        
@@ -54,5 +54,5 @@ class TestUtils(unittest.TestCase):
             self.assertTrue(ssa_file_path in files)
 
             # Test with ignore_postfix
-            files = find_files_from_path(test_dir, "test")
-            self.assertEqual(len(files), 2)
+            files = find_files_from_path(test_dir, "translated")
+            self.assertEqual(len(files), 1)

@@ -3,6 +3,7 @@ from llm import translate, translate_names
 from format import parse_subtitle_file
 from utils import read_subtitle_file, split_into_chunks, find_files_from_path
 import logging
+from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +45,12 @@ def translate_content(subtitle_content: str, target_language: str, pre_translate
     """
     Translates the subtitle content in chunks.
     """
-    print(f"Translating content in chunks...")
-
     # Use split_into_chunks to split the content into manageable chunks
     max_chunk_size = 8_000  # Characters per chunk (adjust based on token limits)
     chunks = split_into_chunks(subtitle_content, max_chunk_size)
 
     translated_chunks = []
-    for i, chunk in enumerate(chunks):
-        print(f"Translating chunk {i+1}/{len(chunks)}...")
-
+    for chunk in tqdm(chunks, desc="Translate content", unit="chunk"):
         # Translate this chunk
         translated_chunk = translate(chunk, target_language, pre_translated_entries)
         translated_chunks.append(translated_chunk.strip())
@@ -73,7 +70,7 @@ def translate_subtitle(path: str, target_language: str) -> None:
     """
 
     try:
-        subtitle_files = find_files_from_path(path, target_language)
+        subtitle_files = find_files_from_path(path, get_language_postfix(target_language))
         if not subtitle_files:
             print(f"No subtitle files found in {path}")
             return
@@ -90,7 +87,7 @@ def translate_subtitle(path: str, target_language: str) -> None:
         pre_translated_entries = translate_names('\n'.join(pre_translate_requests), target_language)
         print(f"Pre-translated Entries:\n{pre_translated_entries}\n")
 
-        for subtitle_format, subtitle_file, subtitle_content in zip(subtitle_formats, subtitle_files, subtitle_contents):
+        for subtitle_format, subtitle_file, subtitle_content in tqdm(list(zip(subtitle_formats, subtitle_files, subtitle_contents)), desc=f"Translate files in ...{path[-20:]}", unit="file"):
 
             translated_content = translate_content(subtitle_content, target_language, pre_translated_entries)
 

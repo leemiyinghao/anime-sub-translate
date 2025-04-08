@@ -62,6 +62,7 @@ def read_subtitle_file(subtitle_file: str) -> str:
         return file.read()
 
 def find_files_from_path(path: str, ignore_postfix: str) -> List[str]:
+    ignore_postfix = ignore_postfix.strip('.')
     # Check if path is a directory or a file
     subtitle_files = []
     if os.path.isdir(path):

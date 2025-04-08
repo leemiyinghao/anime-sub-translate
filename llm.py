@@ -1,10 +1,11 @@
+import os, time
+
 import litellm
-import os
-import time
+from tqdm import tqdm
 
 RETRY_TIMES = 20
 
-def translate(text: str, target_language: str, pretranslate: str = None) -> str:
+def translate(text: str, target_language: str, pretranslate: str | None = None) -> str:
     """
         Translates the given text to the target language using litellm.
         :param text: The text to translate.
@@ -47,12 +48,11 @@ def translate(text: str, target_language: str, pretranslate: str = None) -> str:
                 stream=True
             )
             chunks = []
-            for part in response:
+            for part in tqdm(response, unit="tokens"):
                 token = part.choices[0].delta.content or ""
-                print(token, end='', flush=True)
                 chunks.append(token)
-            print("\n", end='', flush=True)
             return ''.join(chunks)
+
         except Exception as e:
             print(f"Translation error: {e}")
             if retry < RETRY_TIMES - 1:
@@ -61,6 +61,7 @@ def translate(text: str, target_language: str, pretranslate: str = None) -> str:
                 time.sleep(after)
             else:
                 raise
+    return ''
 
 def translate_names(text: str, target_language: str) -> str:
     """
