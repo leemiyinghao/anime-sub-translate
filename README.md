@@ -25,7 +25,7 @@ uv pip install .
 ## Usage
 
 ```bash
-python main.py <path_to_subtitle_file> <target_language>
+python main.py <target_language> <path_to_subtitle_file>
 ```
 
 -   `<path_to_subtitle_file>`:  Path to the subtitle file or directory containing subtitle files (.srt, .ssa, .ass).
@@ -34,7 +34,7 @@ python main.py <path_to_subtitle_file> <target_language>
 ### Example
 
 ```bash
-python main.py subtitles/episode1.srt 繁體中文
+python main.py 繁體中文 subtitles/episode1.srt
 ```
 
 This will translate the `episode1.srt` subtitle file to Chinese (Traditional) and save the translated subtitle file as `episode1.繁體中文.srt`.
