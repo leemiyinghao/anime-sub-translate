@@ -1,8 +1,6 @@
-import os, asyncio
+import os, asyncio, re, json, logging
 from typing import Optional, Iterable, AsyncGenerator
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslatedContext
-import json
-import logging
 import litellm
 from tqdm import tqdm
 
@@ -109,7 +107,7 @@ async def translate_dialouges(
 
     system_message = f"""You are an experienced translator. Translate the text to {target_language}.
 Important instructions:
-1. Preserve all formatting exactly as they appear in the original content if any.
+1. Preserve all formatting exactly as they appear in the original content. Do not add or remove any formatting.
 2. Output dialogues in the same order and the same ID as the original content.
 3. Missing or incorrect IDs are not acceptable.
 4. It's not necessary to keep the original text in the translation as long as the meaning is preserved."""
@@ -150,7 +148,8 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
             chunks = [
                 SubtitleDialogue(
                     id=dialogue["id"],
-                    content=dialogue["content"],
+                    # LLMs have a tendency to over-escape backslashes.
+                    content=re.sub(r"\\+", "\\\\", dialogue["content"]),
                 )
                 for dialogue in json.loads(result)["subtitles"]
             ]
