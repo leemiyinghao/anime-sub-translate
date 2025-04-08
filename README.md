@@ -46,14 +46,21 @@ The script uses environment variables for configuration:
 -   `LLM_MODEL`: The language model to use for translation (default: `gpt-3.5-turbo`).
 -   `LLM_EXTRA_PROMPT`: Extra prompt to pass to the language model.
 -   `LANGUAGE_POSTFIX`: The postfix to use for the translated subtitle file (default: target language).
+-   `MAX_INPUT_TOKEN`: Max input token limit of the language model.
+-   `MAX_OUTPUT_TOKEN`: Max output token limit of the language model.
 
 You can set these environment variables in a `.env` file in the project root directory.  Example:
 
 ```
+OPENROUTER_API_KEY=!!!!YOUR_API_KEY!!!!
 LLM_MODEL=openrouter/google/gemini-2.0-flash-001
+MAX_INPUT_TOKEN=500000
+MAX_OUTPUT_TOKEN=5000
 LANGUAGE_POSTFIX=zh_tw.ai
-LLM_EXTRA_PROMPT=使用標準台灣繁體中文，不可使用簡體中文或中國常用語。不需要漢語拼音。對白部分注意口語風格，避免太像學術文章。注意角色使用對白時的情緒及心境。不必要時省略句末句號（。）。
+LLM_EXTRA_PROMPT=使用標準台灣繁體中文，不可使用簡體中文或中國常用語。使用台灣用語或常用翻譯。不可標註拼音。注意口語風格。注意角色情緒及心境。不必要時省略句末句號（。）。日文發音如無法確定漢字，選擇常用翻譯。避免使用嚴重不適當用詞，使用隱晦詞語代替。
 ```
+
+You may also found the `.env.example` file in the project root directory for reference.
 
 ## Dependencies
 
