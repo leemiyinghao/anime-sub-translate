@@ -142,6 +142,13 @@ async def translate_prepare(
             previous_translated=pre_translated_context,
         )
         pre_translated_context = list(context)
+        # deduplicate context by original
+        pre_translated_context = [
+            context
+            for _, context in {
+                context["original"]: context for context in pre_translated_context
+            }.items()
+        ]
         if os.environ.get("VERBOSE", "0") == "1":
             logger.info("Update context:")
             for idx, context in enumerate(pre_translated_context):
