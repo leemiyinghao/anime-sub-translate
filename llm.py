@@ -297,7 +297,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     messages = [system_message, formatting_instruction]
     if previous_translated:
         messages.append(
-            f"Here are previous context note you take. Reuse and output them, but DO NOT EDIT or REMOVE any of them:\n {dump_json(previous_translated)}"
+            f"Here are previous context note you take. Reuse and output them, but TRY NOT TO EDIT, ONLY REMOVE UNESSEARY WORDS WHEN CONTEXT IS TOO LARGE:\n {dump_json(previous_translated)}"
         )
 
     contexts: list[PreTranslatedContext] = []

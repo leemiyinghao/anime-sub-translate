@@ -141,7 +141,7 @@ async def translate_prepare(
             progress_bar=progress_bar,
             previous_translated=pre_translated_context,
         )
-        pre_translated_context.extend(list(context))
+        pre_translated_context = list(context)
 
     return pre_translated_context
 
