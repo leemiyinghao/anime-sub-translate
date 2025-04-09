@@ -229,4 +229,4 @@ if __name__ == "__main__":
     translate(args.path, args.target_language)
 
     logger.info("Translation completed.")
-    logger.info(f"Estimated cost: {CostTracker().get_cost()} USD")
+    logger.info(f"Estimated cost: {CostTracker().get_cost():.5f} USD")
