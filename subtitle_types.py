@@ -18,4 +18,4 @@ class RichSubtitleDialogue(SubtitleDialogue):
 class PreTranslatedContext(TypedDict):
     original: str
     translated: str
-    description: str
+    description: Optional[str]
