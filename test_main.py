@@ -67,7 +67,10 @@ class TestTranslateFile(unittest.TestCase):
         self, mock_environ, mock_translate_dialogues, mock_chunk_dialogues
     ):
         # Configure environment to enable verbose mode
-        mock_environ.get.return_value = "1"
+        # only mock the VERBOSE environment variable
+        mock_environ.get.side_effect = (
+            lambda key, default=None: "1" if key == "VERBOSE" else default
+        )
 
         # Configure mocks
         mock_chunk_dialogues.return_value = [self.sample_dialogues]
@@ -179,7 +182,7 @@ class TestTranslateFile(unittest.TestCase):
         )
 
         # Verify the function behaved as expected
-        mock_chunk_dialogues.assert_called_once_with(all_dialogues, 50000)
+        mock_chunk_dialogues.assert_called_once_with(all_dialogues, 500000)
         mock_translate_context.assert_called_once()
 
         # Check that the result contains all the expected context items
@@ -257,7 +260,7 @@ class TestTranslateFile(unittest.TestCase):
         result = await translate_prepare([], "Spanish")
 
         # Verify the function behaved as expected
-        mock_chunk_dialogues.assert_called_once_with([], 50000)
+        mock_chunk_dialogues.assert_called_once_with([], 500000)
         mock_translate_context.assert_not_called()
 
         # Check that the result is an empty list
