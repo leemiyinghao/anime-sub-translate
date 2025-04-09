@@ -93,7 +93,7 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         dialogues[0]["content"] = "Modified first subtitle"
         dialogues[1]["content"] = "Modified second subtitle"
         dialogues[2]["content"] = "Modified third subtitle"
-        dialogues[3]["content"] = "Modified fourth subtitle"
+        dialogues[3]["content"] = "Modified fourth \nsubtitle"
 
         # Update the subtitle
         self.ssa_format.update(iter(dialogues))
@@ -105,7 +105,7 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         self.assertEqual(updated_dialogues[0]["content"], "Modified first subtitle")
         self.assertEqual(updated_dialogues[1]["content"], "Modified second subtitle")
         self.assertEqual(updated_dialogues[2]["content"], "Modified third subtitle")
-        self.assertEqual(updated_dialogues[3]["content"], "Modified fourth subtitle")
+        self.assertEqual(updated_dialogues[3]["content"], r"Modified fourth \Nsubtitle")
 
     def test_update_with_invalid_id(self):
         """Test updating with an invalid subtitle ID"""

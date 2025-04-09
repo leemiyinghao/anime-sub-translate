@@ -56,7 +56,7 @@ class SubtitleFormatSSA(SubtitleFormat):
                 raise IndexError("Subtitle ID out of range")
             # Replace new lines with \N in the SSA format
             self._raw_format[new_subtitle["id"]].text = re.sub(
-                r"\n", "\\N", new_subtitle["content"]
+                r"\n", r"\\N", new_subtitle["content"]
             )
 
     def update_title(self, title: str) -> None:
