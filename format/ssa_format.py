@@ -2,6 +2,7 @@ from pysubs2 import SSAFile
 from typing import Iterable
 from .format import SubtitleFormat
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
+import re
 
 
 class SubtitleFormatSSA(SubtitleFormat):
@@ -53,7 +54,10 @@ class SubtitleFormatSSA(SubtitleFormat):
             # Update the content of the subtitle
             if new_subtitle["id"] >= len(self._raw_format):
                 raise IndexError("Subtitle ID out of range")
-            self._raw_format[new_subtitle["id"]].text = new_subtitle["content"]
+            # Replace new lines with \N in the SSA format
+            self._raw_format[new_subtitle["id"]].text = re.sub(
+                r"\n", "\\N", new_subtitle["content"]
+            )
 
     def update_title(self, title: str) -> None:
         """
