@@ -78,6 +78,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "litellm" },
+    { name = "pydantic" },
     { name = "pysubs2" },
     { name = "srt" },
     { name = "tqdm" },
@@ -92,6 +93,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "litellm", specifier = ">=1.65.4.post1" },
+    { name = "pydantic", specifier = ">=2.11.2" },
     { name = "pysubs2", specifier = ">=1.8.0" },
     { name = "srt", specifier = ">=3.5.3" },
     { name = "tqdm", specifier = ">=4.67.1" },

@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "litellm>=1.65.4.post1",
+    "pydantic>=2.11.2",
     "pysubs2>=1.8.0",
     "srt>=3.5.3",
     "tqdm>=4.67.1",
