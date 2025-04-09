@@ -209,7 +209,8 @@ Important instructions:
 1. Preserve all formatting exactly as they appear in the original content. Do not add or remove any formatting.
 2. Output dialogues in the same order and the same ID as the original content.
 3. Missing or incorrect IDs are not acceptable.
-4. It's not necessary to keep the original text in the translation as long as the meaning is preserved."""
+4. It's not necessary to keep the original text in the translation as long as the meaning is preserved.
+5. Any extra information, formatting, syntax, comments, or explanations in the output are not acceptable."""
 
     formatting_instruction = """Response example: { "subtitles": [{"id": 0, "content": "Hello"}, {"id": 1, "content": "World"}] }
 You don't need to return the actor and style information, just return the content and id.
@@ -286,7 +287,8 @@ Important instructions:
 1. Identify names of people, places, organizations, and other proper entities or nouns that appear frequently in the text.
 2. Provide translations for these names if appropriate in the target language.
 3. For names that should not be translated, indicate they should remain as is.
-4. Only include actual names of entities, not common nouns, sentences or other text that are commonly used outside the context."""
+4. Only include actual names of entities. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
+5. Duplicate names should be merged into one entry."""
 
     formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
