@@ -2,7 +2,14 @@ import unittest
 import asyncio
 import json
 from unittest.mock import patch, AsyncMock
-from llm import _simple_sanity_check, translate_dialouges, translate_context
+from llm import (
+    FailedAfterRetries,
+    _simple_sanity_check,
+    translate_dialouges,
+    translate_context,
+    obj_or_json,
+    SubtitleDialogueDTO,
+)
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslatedContext
 
 
@@ -92,6 +99,26 @@ class TestLLM(unittest.TestCase):
 
         # This should pass since we're only checking if the sets of IDs match
         self.assertTrue(_simple_sanity_check(original, translated))
+
+    def test_obj_or_json(self):
+        # Test with a string JSON input
+        json_string = '{"id": 1, "content": "Hello"}'
+        result = obj_or_json(SubtitleDialogueDTO, json_string)
+        self.assertIsInstance(result, SubtitleDialogueDTO)
+        self.assertEqual(result.id, 1)
+        self.assertEqual(result.content, "Hello")
+
+        # Test with an already parsed object
+        obj = SubtitleDialogueDTO(id=2, content="World")
+        result = obj_or_json(SubtitleDialogueDTO, obj)
+        self.assertIsInstance(result, SubtitleDialogueDTO)
+        self.assertEqual(result.id, 2)
+        self.assertEqual(result.content, "World")
+
+        # Test with no-valid JSON input
+        json_input = '{"invalid": "json"}'
+        with self.assertRaises(ValueError):
+            obj_or_json(SubtitleDialogueDTO, json_input)
 
     @patch("llm._send_llm_request")
     def test_translate_context_success(self, mock_send_llm_request):
@@ -508,7 +535,7 @@ class TestLLM(unittest.TestCase):
         ]
 
         # Run the test and expect an exception
-        with self.assertRaises(ValueError):
+        with self.assertRaises(FailedAfterRetries):
             asyncio.run(
                 translate_dialouges(
                     original=original_dialogues, target_language="Spanish"
