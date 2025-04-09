@@ -6,9 +6,10 @@ from utils import read_subtitle_file, find_files_from_path
 import logging
 from tqdm.auto import tqdm
 from utils import chunk_dialogues, save_pre_translate_store, load_pre_translate_store
-from subtitle_types import PreTranslatedContext
+from subtitle_types import PreTranslatedContext, SubtitleDialogue
 from typing import Iterable
 from cost import CostTracker
+from itertools import batched
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -68,26 +69,39 @@ async def translate_file(
     # will be similar to the input tokens.
     max_chunk_size = int(os.environ.get("MAX_OUTPUT_TOKEN", "5000"))
     chunks = chunk_dialogues(subtitle_content.dialogues(), max_chunk_size)
+    concurrency = int(os.environ.get("CONCURRENCY", "16"))
     logger.info(f"Total chunks: {len(chunks)}")
 
-    tasks = []
-    for idx, dialogue_chunk in enumerate(chunks):
-        progress_bar = None
-        if os.environ.get("VERBOSE", "0") == "1":
-            progress_bar = tqdm(
-                desc=f"Translating chunk {idx + 1}/{len(chunks)}",
-                position=idx + 1,
-                total=len(dialogue_chunk),
+    translated_dialogues = []
+    # group chunks by concurrency
+    for chunk_group in batched(enumerate(chunks), concurrency):
+        tasks = []
+        for idx, dialogue_chunk in chunk_group:
+            progress_bar = None
+            if os.environ.get("VERBOSE", "0") == "1":
+                progress_bar = tqdm(
+                    desc=f"Translating chunk {idx + 1}/{len(chunks)}",
+                    position=idx + 1,
+                    total=len(dialogue_chunk),
+                )
+            tasks.append(
+                translate_dialouges(
+                    original=dialogue_chunk,
+                    target_language=target_language,
+                    pretranslate=pre_translated_context,
+                    progress_bar=progress_bar,
+                )
             )
-        tasks.append(
-            translate_dialouges(
-                original=dialogue_chunk,
-                target_language=target_language,
-                pretranslate=pre_translated_context,
-                progress_bar=progress_bar,
-            )
+        translated_chunk_group: list[list[SubtitleDialogue]] = await asyncio.gather(
+            *tasks
         )
-    translated_dialogues = await asyncio.gather(*tasks)
+        if os.environ.get("VERBOSE", "0") == "1":
+            logger.info("Translated chunk:")
+            for idx, dialogue in enumerate(
+                [dialogue for _chunk in translated_chunk_group for dialogue in _chunk]
+            ):
+                logger.info(f"  {idx}: {dialogue['content']}")
+        translated_dialogues.extend(translated_chunk_group)
     for translated_chunk in translated_dialogues:
         subtitle_content.update(translated_chunk)
 
