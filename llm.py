@@ -124,10 +124,6 @@ async def _send_llm_request(
     )
     messages = [
         {"role": "system", "content": "\n".join(instructions)},
-        {
-            "role": "system",
-            "content": "Respect JSON schema.",
-        },
     ]
     if pretranslate:
         json_pretranslate = dump_json(
