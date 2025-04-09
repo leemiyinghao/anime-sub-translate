@@ -8,6 +8,7 @@ from tqdm.auto import tqdm
 from utils import chunk_dialogues, save_pre_translate_store, load_pre_translate_store
 from subtitle_types import PreTranslatedContext
 from typing import Iterable
+from cost import CostTracker
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -226,3 +227,6 @@ if __name__ == "__main__":
     )
 
     translate(args.path, args.target_language)
+
+    logger.info("Translation completed.")
+    logger.info(f"Estimated cost: {CostTracker().get_cost()} USD")

@@ -6,6 +6,8 @@ from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslated
 import litellm
 from tqdm import tqdm
 from pydantic import BaseModel, BeforeValidator, ValidationError
+from litellm.cost_calculator import completion_cost
+from cost import CostTracker
 
 RETRY_TIMES = 5
 
@@ -152,9 +154,18 @@ async def _send_llm_request(
         },
     )
 
+    tokens = []
     async for part in response:  # type: ignore
         token = part.choices[0].delta.content or ""
+        tokens.append(token)
         yield token
+
+    cost = completion_cost(
+        model=model,
+        prompt=user_message + "".join([m["content"] for m in messages]),
+        completion="".join(tokens),
+    )
+    CostTracker().add_cost(cost)
 
 
 def _simple_sanity_check(
