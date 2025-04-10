@@ -6,7 +6,12 @@ from cost import CostTracker
 from production_litellm import completion_cost, litellm
 from pydantic import BaseModel, ValidationError
 from setting import get_setting
-from subtitle_types import PreTranslatedContext, SubtitleDialogue
+from subtitle_types import (
+    CharacterInfo,
+    MediaSetMetadata,
+    PreTranslatedContext,
+    SubtitleDialogue,
+)
 from tqdm import tqdm
 
 from .dto import (
@@ -121,6 +126,7 @@ async def translate_dialogues(
     original: Iterable[SubtitleDialogue],
     target_language: str,
     pretranslate: Optional[Iterable[PreTranslatedContext]] = None,
+    metadata: Optional[MediaSetMetadata] = None,
     progress_bar: Optional[tqdm] = None,
 ) -> Iterable[SubtitleDialogue]:
     """
@@ -147,6 +153,13 @@ You don't need to return the actor and style information, just return the conten
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     json_content = dump_json(DialogueSetRequestDTO.from_subtitle(original))
 
+    messages = [
+        system_message,
+        formatting_instruction,
+    ]
+    if metadata:
+        messages.append(matadata_prompt(metadata))
+
     translated: list[SubtitleDialogue] = []
     _pretranslate = (
         PreTranslatedContextSetDTO.from_contexts(pretranslate) if pretranslate else None
@@ -158,7 +171,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 progress_bar.reset()
             async for chunk in _send_llm_request(
                 content=json_content,
-                instructions=[system_message, formatting_instruction],
+                instructions=messages,
                 pretranslate=_pretranslate,
                 json_schema=DialogueSetResponseDTO,
             ):
@@ -195,6 +208,7 @@ async def translate_context(
     original: Iterable[SubtitleDialogue],
     target_language: str,
     previous_translated: Optional[Iterable[PreTranslatedContext]] = None,
+    metadata: Optional[MediaSetMetadata] = None,
     progress_bar: Optional[tqdm] = None,
 ) -> list[PreTranslatedContext]:
     """
@@ -217,6 +231,10 @@ Be aware that the description field is optional, use it only when necessary.
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
 
     messages = [system_message, formatting_instruction]
+
+    if metadata:
+        messages.append(matadata_prompt(metadata))
+
     if previous_translated:
         messages.append(
             f"Here are previous context note you take. Must reuse and output them, you may refine it based on new information or if it against the rule:\n {dump_json(PreTranslatedContextSetDTO.from_contexts(previous_translated))}"
@@ -259,3 +277,22 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
             raise FailedAfterRetries() from e
 
     return contexts
+
+
+def matadata_prompt(metadata: MediaSetMetadata) -> str:
+    title_alt = (
+        f", also called {', '.join(metadata.title_alt)}" if metadata.title_alt else ""
+    )
+
+    return f"""Here are some basic information about this story:
+    Title: {metadata.title}{title_alt}
+    Description: {metadata.description}
+
+    Main characters:
+    {"\n".join([character_prompt(character) for character in metadata.characters])}
+    """
+
+
+def character_prompt(chara: CharacterInfo) -> str:
+    name_alt = f", also called {', '.join(chara.name_alt)}" if chara.name_alt else ""
+    return f"""{chara.name}{name_alt}. Gender is {chara.gender}"""

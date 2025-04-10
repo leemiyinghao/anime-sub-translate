@@ -29,6 +29,7 @@ class _Setting(BaseSettings):
 
     # application setting
     verbose: bool = False
+    anilist_token: Optional[str] = None
 
 
 def load_setting_with_env_file(env_file: str) -> _Setting:

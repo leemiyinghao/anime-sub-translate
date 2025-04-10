@@ -1,11 +1,10 @@
-import json
 import logging
 import os
 from typing import List, Optional
 
 from pydantic import BaseModel
 
-from subtitle_types import PreTranslatedContext
+from subtitle_types import CharacterInfo, MediaSetMetadata, PreTranslatedContext
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +18,44 @@ class PreTranslatedContextDTO(PreTranslatedContext):
         return PreTranslatedContext(**self.model_dump())
 
 
+class CharacterInfoDTO(CharacterInfo):
+    @classmethod
+    def from_character_info(cls, character_info: CharacterInfo) -> "CharacterInfoDTO":
+        return cls(**character_info.model_dump())
+
+    def to_character_info(self) -> CharacterInfo:
+        return CharacterInfo(**self.model_dump())
+
+
+class MediaSetMetadataDTO(BaseModel):
+    title: str
+    title_alt: list[str] = []
+    description: str = ""
+    characters: list[CharacterInfoDTO] = []
+
+    @classmethod
+    def from_metadata(cls, metadata: MediaSetMetadata) -> "MediaSetMetadataDTO":
+        return cls(
+            **metadata.model_dump(
+                exclude={"characters"},
+            ),
+            characters=[
+                CharacterInfoDTO.from_character_info(c) for c in metadata.characters
+            ],
+        )
+
+    def to_metadata(self) -> MediaSetMetadata:
+        return MediaSetMetadata(
+            **self.model_dump(
+                exclude={"characters"},
+            ),
+            characters=[character.to_character_info() for character in self.characters],
+        )
+
+
 class Store(BaseModel):
     context: Optional[List[PreTranslatedContextDTO]] = None
+    metadata: Optional[MediaSetMetadataDTO] = None
 
     @classmethod
     def load_from_file(cls, path: str) -> "Store":
@@ -75,4 +110,25 @@ def save_pre_translate_store(
         PreTranslatedContextDTO.from_context(context)
         for context in pre_translate_context
     ]
+    stored.save_to_file(path)
+
+
+def load_media_set_metadata(path: str) -> Optional[MediaSetMetadata]:
+    """
+    Loads the media set metadata from a file.
+    :param path: Path of the directory containing the media set metadata.
+    :return: MediaSetMetadata object or None if not found.
+    """
+    stored = Store.load_from_file(path)
+    return stored.metadata.to_metadata() if stored.metadata else None
+
+
+def save_media_set_metadata(path: str, metadata: MediaSetMetadata) -> None:
+    """
+    Saves the media set metadata to a file.
+    :param path: Path of the directory containing the media set metadata.
+    :param metadata: MediaSetMetadata object to save.
+    """
+    stored = Store.load_from_file(path)
+    stored.metadata = MediaSetMetadataDTO.from_metadata(metadata)
     stored.save_to_file(path)

@@ -1,20 +1,24 @@
 import asyncio
 import logging
 import os
+import re
 from itertools import batched
-from typing import Iterable
+from typing import Iterable, Optional
 
 from tqdm.auto import tqdm
 
+from anilist import search_mediaset_metadata
 from format import parse_subtitle_file
 from format.format import SubtitleFormat
 from llm import translate_context, translate_dialogues
 from setting import get_setting
 from store import (
+    load_media_set_metadata,
     load_pre_translate_store,
+    save_media_set_metadata,
     save_pre_translate_store,
 )
-from subtitle_types import PreTranslatedContext, SubtitleDialogue
+from subtitle_types import MediaSetMetadata, PreTranslatedContext, SubtitleDialogue
 from utils import (
     chunk_dialogues,
     find_files_from_path,
@@ -65,6 +69,7 @@ async def translate_file(
     subtitle_content: SubtitleFormat,
     target_language: str,
     pre_translated_context: Iterable[PreTranslatedContext],
+    metadata: Optional[MediaSetMetadata] = None,
 ) -> SubtitleFormat:
     """
     Translates the subtitle content in chunks.
@@ -99,6 +104,7 @@ async def translate_file(
                     original=dialogue_chunk,
                     target_language=target_language,
                     pretranslate=pre_translated_context,
+                    metadata=metadata,
                     progress_bar=progress_bar,
                 )
             )
@@ -118,9 +124,10 @@ async def translate_file(
     return subtitle_content
 
 
-async def translate_prepare(
+async def prepare_context(
     subtitle_contents: Iterable[SubtitleFormat],
     target_language: str,
+    metadata: Optional[MediaSetMetadata] = None,
 ) -> list[PreTranslatedContext]:
     """
     Prepares the translation by translating the context.
@@ -156,6 +163,7 @@ async def translate_prepare(
             target_language=target_language,
             progress_bar=progress_bar,
             previous_translated=pre_translated_context,
+            metadata=metadata,
         )
         pre_translated_context = list(context)
         # deduplicate context by original
@@ -171,6 +179,24 @@ async def translate_prepare(
                 logger.info(f"  {idx}: {context.original} -> {context.translated}")
 
     return pre_translated_context
+
+
+def prepare_metadata(
+    path: str,
+) -> Optional[MediaSetMetadata]:
+    # resolve leaf directory name from path
+    dir_name = os.path.abspath(path)
+    dir_name = os.path.dirname(dir_name)
+    dir_name = os.path.basename(dir_name)
+
+    title = dir_name.replace("_", " ").replace("-", " ")  # replace special characters
+    title = re.sub(
+        r"\[[^\]]+\]|\s+", "", title
+    ).strip()  # remove brackets and extra spaces
+
+    # search for metadata
+    metadata = search_mediaset_metadata(title)
+    return metadata
 
 
 def translate(path: str, target_language: str) -> None:
@@ -197,17 +223,37 @@ def translate(path: str, target_language: str) -> None:
 
         subtitle_formats = [parse_subtitle_file(file) for file in subtitle_paths]
 
+        # mediaset metadata
+        metadata = None
+        if stored := load_media_set_metadata(path):
+            metadata = stored
+        else:
+            metadata = prepare_metadata(path)
+            if metadata:
+                save_media_set_metadata(path, metadata)
+
+        if metadata:
+            # print metadata
+            logger.info("Metadata:")
+            logger.info(f"  Title: {metadata.title} ({','.join(metadata.title_alt)})")
+            logger.info(f"  {metadata.description}")
+            logger.info(f"  Characters:")
+            for character in metadata.characters:
+                logger.info(
+                    f"    {character.name}, {character.gender} ({','.join(character.name_alt)})"
+                )
+
         # pre-translate context
         pre_translate_context = None
         if stored := load_pre_translate_store(path):
             pre_translate_context = stored
         else:
             pre_translate_context = asyncio.run(
-                translate_prepare(subtitle_formats, target_language)
+                prepare_context(subtitle_formats, target_language, metadata=metadata)
             )
             save_pre_translate_store(path, pre_translate_context)
 
-        # Print pre-translate context
+        # Print pre-translate context and metadata
         logger.info("pre-translate context:")
         for context in pre_translate_context:
             logger.info(
@@ -226,7 +272,12 @@ def translate(path: str, target_language: str) -> None:
                 continue
 
             translated_content = asyncio.run(
-                translate_file(subtitle_format, target_language, pre_translate_context)
+                translate_file(
+                    subtitle_format,
+                    target_language,
+                    pre_translate_context,
+                    metadata=metadata,
+                )
             )
 
             # replace Title line in support format like ASS/SSA

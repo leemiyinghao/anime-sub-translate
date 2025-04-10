@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from format.format import SubtitleFormat
 from subtitle_types import PreTranslatedContext, SubtitleDialogue
-from translate import translate_file, translate_prepare
+from translate import prepare_context, translate_file
 
 
 class TestTranslateFile(unittest.TestCase):
@@ -176,7 +176,7 @@ class TestTranslateFile(unittest.TestCase):
         mock_translate_context.return_value = context_result
 
         # Call the function being tested
-        result = await translate_prepare(
+        result = await prepare_context(
             [self.mock_subtitle_format, mock_subtitle_format2], "Spanish"
         )
 
@@ -252,7 +252,7 @@ class TestTranslateFile(unittest.TestCase):
         mock_translate_context.side_effect = [context_result1, context_result2]
 
         # Call the function being tested
-        result = await translate_prepare(
+        result = await prepare_context(
             [self.mock_subtitle_format, mock_subtitle_format2], "Spanish"
         )
 
@@ -272,7 +272,7 @@ class TestTranslateFile(unittest.TestCase):
         mock_chunk_dialogues.return_value = []
 
         # Call the function being tested with an empty list of subtitle formats
-        result = await translate_prepare([], "Spanish")
+        result = await prepare_context([], "Spanish")
 
         # Verify the function behaved as expected
         mock_chunk_dialogues.assert_called_once_with([], 500000)
