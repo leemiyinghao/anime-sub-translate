@@ -220,11 +220,10 @@ async def translate_context(
 
 Important instructions:
 1. Identify rare words that appear frequently in the text.
-2. Always provide translations for these words in the target language.
+2. Always provide translations for these words in {target_language}.
 4. Only include actual rare names of entities. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
 5. Character name should always be noted.
-6. Duplicate names should be merged into one entry.
-7. Ignore all formatting syntax."""
+6. Duplicate names should be merged into one entry."""
 
     formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
@@ -276,6 +275,69 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 continue
             raise FailedAfterRetries() from e
 
+    return contexts
+
+
+async def refine_context(
+    target_language: str,
+    contexts: Iterable[PreTranslatedContext],
+    metadata: Optional[MediaSetMetadata] = None,
+    progress_bar: Optional[tqdm] = None,
+) -> list[PreTranslatedContext]:
+    """
+    Refine the context before dialogue translation.
+    :param target_language: The target language for translation.
+    :param contexts: The original context.
+    :param metadata: The metadata for the media set.
+    :return: The refined context.
+    """
+
+    system_message = f"""You are an experienced translator preparing translate the following anime, tv series, or movie subtitle text. Refine the context note before translation them into {target_language}
+
+        Important instructions:
+        1. Review the context note.
+        2. Make sure all translations in {target_language} are correct.
+        4. Return every note after refinement."""
+
+    formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
+Be aware that the description field is optional, use it only when necessary.
+You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
+
+    messages = [system_message, formatting_instruction]
+
+    if metadata:
+        messages.append(matadata_prompt(metadata))
+
+    contexts = []
+    for retry in range(get_setting().llm_retry_times):
+        chunks = []
+        try:
+            async for chunk in _send_llm_request(
+                content=dump_json(PreTranslatedContextSetDTO.from_contexts(contexts)),
+                instructions=messages,
+                json_schema=PreTranslatedContextSetDTO,
+            ):
+                chunks.append(chunk)
+                if progress_bar is not None:
+                    progress_bar.update(len(chunk))
+
+            result = "".join(chunks)
+            if not result:
+                raise ValueError("Empty response from LLM")
+            contexts = parse_json(PreTranslatedContextSetDTO, result).to_contexts()
+        except Exception as e:
+            if isinstance(e, ValidationError):
+                _logger.error(f"{e.error_count()} validation errors")
+            else:
+                _logger.error(f"Translation error: {e}")
+            if retry < get_setting().llm_retry_times - 1:
+                after = get_setting().llm_retry_delay * (
+                    get_setting().llm_retry_backoff ** retry
+                )
+                _logger.info(f"Retrying after {after} seconds...")
+                await asyncio.sleep(after)
+                continue
+            raise FailedAfterRetries() from e
     return contexts
 
 

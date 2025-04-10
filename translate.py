@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 from anilist import search_mediaset_metadata
 from format import parse_subtitle_file
 from format.format import SubtitleFormat
-from llm import translate_context, translate_dialogues
+from llm import refine_context, translate_context, translate_dialogues
 from setting import get_setting
 from store import (
     load_media_set_metadata,
@@ -181,6 +181,19 @@ async def prepare_context(
                 logger.info(
                     f"  {idx}: {context.original} -> {context.translated} ({context.description})"
                 )
+        progress_bar.close()
+
+    # refine context
+    progress_bar = tqdm(
+        desc=f"Refining context",
+    )
+    pre_translated_context = await refine_context(
+        contexts=pre_translated_context,
+        target_language=target_language,
+        metadata=metadata,
+        progress_bar=progress_bar,
+    )
+    progress_bar.close()
 
     return pre_translated_context
 
