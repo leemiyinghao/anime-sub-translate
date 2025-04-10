@@ -197,7 +197,7 @@ def translate(path: str, target_language: str) -> None:
         logger.info("pre-translate context:")
         for context in pre_translate_context:
             logger.info(
-                f"  {context['original']} -> {context['translated']}: {context['description']}"
+                f"  {context['original']} -> {context['translated']}: {context['description']} ({context['description']})"
             )
 
         for subtitle_path, subtitle_format in tqdm(

@@ -208,7 +208,7 @@ async def translate_dialouges(
 Important instructions:
 1. Preserve all formatting exactly as they appear in the original content. Do not add or remove any formatting.
 2. Output dialogues in the same order and the same ID as the original content.
-3. Missing or incorrect IDs are not acceptable.
+3. Missing or incorrect IDs are not acceptable. Always return every ID.
 4. It's not necessary to keep the original text in the translation as long as the meaning is preserved.
 5. Any extra information, formatting, syntax, comments, or explanations in the output are not acceptable."""
 
@@ -284,11 +284,12 @@ async def translate_context(
     system_message = f"""You are an experienced translator preparing translate the following anime, tv series, or movie subtitle text. Scan the text and extract important entity translation context from it before translation them into {target_language}
 
 Important instructions:
-1. Identify names of people, places, organizations, and other proper entities or nouns that appear frequently in the text.
-2. Provide translations for these names if appropriate in the target language.
-3. For names that should not be translated, indicate they should remain as is.
-4. Only include actual names of entities. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
-5. Duplicate names should be merged into one entry."""
+1. Identify rare words that appear frequently in the text.
+2. Always provide translations for these words in the target language.
+4. Only include actual rare names of entities. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
+5. Character name should always be noted.
+6. Duplicate names should be merged into one entry.
+7. Ignore all formatting syntax."""
 
     formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
@@ -297,7 +298,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     messages = [system_message, formatting_instruction]
     if previous_translated:
         messages.append(
-            f"Here are previous context note you take. Reuse and output them, but TRY NOT TO EDIT, ONLY REMOVE UNESSEARY WORDS WHEN CONTEXT IS TOO LARGE:\n {dump_json(previous_translated)}"
+            f"Here are previous context note you take. Must reuse and output them, you may refine it based on new information or if it against the rule:\n {dump_json(previous_translated)}"
         )
 
     contexts: list[PreTranslatedContext] = []
