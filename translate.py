@@ -135,9 +135,15 @@ async def translate_prepare(
     # Since we are only extracting context, output tokens will be far
     # less than input tokens. The output tokens is ignorable.
     max_chunk_size = get_setting().max_input_token
-    dialogues = []
+    dialogues: list[SubtitleDialogue] = []
     for subtitle_content in subtitle_contents:
         dialogues.extend(subtitle_content.dialogues())
+
+    # dedupe dialogues since we are only using it to find context
+    dialogues = [
+        d for d in {dialogue.content: dialogue for dialogue in dialogues}.values()
+    ]
+
     chunks = chunk_dialogues(dialogues, max_chunk_size)
 
     pre_translated_context = []
