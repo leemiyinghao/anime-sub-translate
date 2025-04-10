@@ -41,12 +41,17 @@ class SubtitleFormatSSA(SubtitleFormat):
         # Sort the subtitles by start time
         sorted_subtitles = sorted(enumerate(self._raw_format), key=lambda x: x[1].start)
         for idx, subtitle in sorted_subtitles:
-            yield SubtitleDialogue(
-                id=_serialize_id(idx),
-                content=subtitle.text,
-                actor=subtitle.name or None,
-                style=subtitle.style or None,
-            )
+            sections = _split_by_formatting(subtitle.text)
+            for sidx, (text, is_formatting) in enumerate(sections):
+                if is_formatting:
+                    # Skip formatting sections
+                    continue
+                yield SubtitleDialogue(
+                    id=_serialize_id(idx, sidx),
+                    content=text,
+                    actor=subtitle.name or None,
+                    style=subtitle.style or None,
+                )
 
     def update(self, subtitle_dialogues: Iterable[SubtitleDialogue]) -> None:
         """
@@ -55,11 +60,21 @@ class SubtitleFormatSSA(SubtitleFormat):
         """
         for new_subtitle in subtitle_dialogues:
             # Update the content of the subtitle
-            _id = _deserialize_id(new_subtitle.id)
-            if _id >= len(self._raw_format):
+            _id, _sid = (None, None)
+            try:
+                _id, _sid = _deserialize_id(new_subtitle.id)
+            except ValueError as e:
+                raise IndexError("Invalid subtitle ID format") from e
+            if _id >= len(self._raw_format) or _id < 0:
                 raise IndexError("Subtitle ID out of range")
             # Replace new lines with \N in the SSA format
-            self._raw_format[_id].text = re.sub(r"\n", r"\\N", new_subtitle.content)
+            self._raw_format[_id].text = re.sub(
+                r"\n",
+                r"\\N",
+                _update_substring(
+                    self._raw_format[_id].text, [(_sid, new_subtitle.content)]
+                ),
+            )
 
     def update_title(self, title: str) -> None:
         """
@@ -76,9 +91,59 @@ class SubtitleFormatSSA(SubtitleFormat):
         return self._raw_format.to_string("ass", encoding="utf-8")
 
 
-def _serialize_id(id: int) -> str:
-    return f"{id}"
+def _serialize_id(id: int, sid: int) -> str:
+    return f"{id}.{sid}"
 
 
-def _deserialize_id(id: str) -> int:
-    return int(id)
+def _deserialize_id(id: str) -> tuple[int, int]:
+    _id, _sid = id.split(".")
+    return int(_id), int(_sid)
+
+
+def _split_by_formatting(content: str) -> list[tuple[str, bool]]:
+    """
+    Split the SSA subtitle content by any formatting like {\\i}.
+    :param content: The SSA subtitle content.
+    :return: The split content, containing tuples of (text, is_formatting).
+    """
+
+    # Regex can not handle nested formatting, hence we use a simple parser
+    stack = []
+    breakpoints: list[tuple[int, int]] = []
+    for i, c in enumerate(content):
+        if c == "{":
+            stack.append(i)
+        elif c == "}" and (len(stack) > 0):
+            if ((existed := stack.pop()) is not None) and len(stack) == 0:
+                breakpoints.append((existed, i + 1))
+        else:
+            pass
+
+    sections = []
+    step = 0
+    for start, end in breakpoints:
+        # Split the content into sections
+        sections.append((content[step:start], False))
+        sections.append((content[start:end], True))
+        step = end
+    sections.append((content[step:], False))
+
+    sections = list(filter(lambda x: len(x[0]) > 0, sections))
+
+    return sections
+
+
+def _update_substring(old: str, new: Iterable[tuple[int, str]]) -> str:
+    """
+    Replaces the old substring with the new substring in the raw text of the subtitle file.
+    :param old: The old substring to be replaced.
+    :param new: The new substring to replace the old one.
+    :return: The raw text with the substring replaced.
+    """
+    sections = [c for c, _ in _split_by_formatting(old)]
+    for idx, replacement in new:
+        if idx >= len(sections) or idx < 0:
+            raise IndexError("Index out of range")
+        sections[idx] = replacement
+
+    return "".join(sections)
