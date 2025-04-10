@@ -1,0 +1,44 @@
+version: "3"
+
+tasks:
+  test:
+    desc: Run all unit tests
+    cmds:
+      - uv run -m unittest discover
+
+  test:verbose:
+    desc: Run all unit tests with verbose output
+    cmds:
+      - uv run -m unittest discover -v
+
+  coverage:
+    desc: Run tests with coverage
+    cmds:
+      - uv run -m coverage run -m unittest discover
+      - uv run -m coverage report
+
+  coverage:report:
+    desc: Display coverage report after running tests with coverage
+    deps: [coverage]
+    cmds:
+      - uv run -m coverage report
+
+  coverage:html:
+    desc: Generate HTML coverage report
+    deps: [coverage]
+    cmds:
+      - uv run -m coverage html
+      - echo "HTML coverage report generated in htmlcov/ directory"
+
+  coverage:lcov:
+    desc: Generate LCOV coverage report
+    deps: [coverage]
+    cmds:
+      - uv run -m coverage lcov -o lcov.info
+      - echo "LCOV coverage report generated in lcov.info"
+
+  clean:
+    desc: Clean up coverage reports and cache files
+    cmds:
+      - rm -rf .coverage htmlcov/ coverage.xml lcov.info
+      - find . -type d -name "__pycache__" -exec rm -rf {} +

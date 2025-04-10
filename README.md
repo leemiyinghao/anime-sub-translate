@@ -107,14 +107,14 @@ Unless you are running a local cluster, but I stongly doubt that it will be bett
 
 ## Development
 
-### Test
+### Test and Read Coverage
 
 ```bash
-uv run -m coverage run -m unittest discover
+task coverage
 ```
 
-### Read Coverage Report
+### Test, Read Coverage, and Export Into Lcov File
 
 ```bash
-uv run -m coverage report
+task coverage:lcov
 ```
