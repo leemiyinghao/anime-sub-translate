@@ -332,6 +332,7 @@ Return only the context note, no other text is allowed."""
             refined_contexts = parse_json(
                 PreTranslatedContextSetDTO, result
             ).to_contexts()
+            break
         except Exception as e:
             if isinstance(e, ValidationError):
                 _logger.error(f"{e.error_count()} validation errors")
