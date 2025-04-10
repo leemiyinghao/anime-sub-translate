@@ -11,9 +11,14 @@ from llm import (
     SubtitleDialogueDTO,
 )
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslatedContext
+from setting import _Setting, set_setting
 
 
 class TestLLM(unittest.TestCase):
+    def setUp(self):
+        # Reduce retry wait time for tests
+        set_setting(_Setting(llm_retry_times=2, llm_retry_delay=0))
+
     def test_simple_sanity_check_matching_ids(self):
         # Test case where original and translated dialogues have the same IDs
         original = [

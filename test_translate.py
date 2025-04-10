@@ -1,7 +1,7 @@
 import unittest
-import asyncio
+import asyncio, os
 from unittest.mock import patch, MagicMock
-from main import translate_file, translate_prepare
+from translate import translate_file, translate_prepare
 from format.format import SubtitleFormat
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslatedContext
 
@@ -31,8 +31,8 @@ class TestTranslateFile(unittest.TestCase):
         # Configure the mock to return our sample dialogues
         self.mock_subtitle_format.dialogues.return_value = self.sample_dialogues
 
-    @patch("main.chunk_dialogues")
-    @patch("main.translate_dialouges")
+    @patch("translate.chunk_dialogues")
+    @patch("translate.translate_dialouges")
     async def test_translate_file_basic(
         self, mock_translate_dialogues, mock_chunk_dialogues
     ):
@@ -60,8 +60,8 @@ class TestTranslateFile(unittest.TestCase):
         self.mock_subtitle_format.update.assert_called_once_with(translated_dialogues)
         self.assertEqual(result, self.mock_subtitle_format)
 
-    @patch("main.chunk_dialogues")
-    @patch("main.translate_dialouges")
+    @patch("translate.chunk_dialogues")
+    @patch("translate.translate_dialouges")
     @patch("os.environ")
     async def test_translate_file_with_verbose(
         self, mock_environ, mock_translate_dialogues, mock_chunk_dialogues
@@ -95,8 +95,8 @@ class TestTranslateFile(unittest.TestCase):
         self.mock_subtitle_format.update.assert_called_once_with(translated_dialogues)
         self.assertEqual(result, self.mock_subtitle_format)
 
-    @patch("main.chunk_dialogues")
-    @patch("main.translate_dialouges")
+    @patch("translate.chunk_dialogues")
+    @patch("translate.translate_dialouges")
     async def test_translate_file_multiple_chunks(
         self, mock_translate_dialogues, mock_chunk_dialogues
     ):
@@ -133,8 +133,8 @@ class TestTranslateFile(unittest.TestCase):
 
         self.assertEqual(result, self.mock_subtitle_format)
 
-    @patch("main.translate_context")
-    @patch("main.chunk_dialogues")
+    @patch("translate.translate_context")
+    @patch("translate.chunk_dialogues")
     async def test_translate_prepare_basic(
         self, mock_chunk_dialogues, mock_translate_context
     ):
@@ -188,8 +188,8 @@ class TestTranslateFile(unittest.TestCase):
         # Check that the result contains all the expected context items
         self.assertEqual(result, context_result)
 
-    @patch("main.translate_context")
-    @patch("main.chunk_dialogues")
+    @patch("translate.translate_context")
+    @patch("translate.chunk_dialogues")
     async def test_translate_prepare_multiple_chunks(
         self, mock_chunk_dialogues, mock_translate_context
     ):
@@ -230,6 +230,25 @@ class TestTranslateFile(unittest.TestCase):
             PreTranslatedContext(
                 original="Alice", translated="Alicia", description="Character name"
             ),
+            PreTranslatedContext(
+                original="Jane", translated="Juana", description="Character name"
+            ),
+            # duplicated
+            PreTranslatedContext(
+                original="Jane", translated="Juana", description="Character name"
+            ),
+        ]
+
+        expected_result = [
+            PreTranslatedContext(
+                original="Bob", translated="Roberto", description="Character name"
+            ),
+            PreTranslatedContext(
+                original="Alice", translated="Alicia", description="Character name"
+            ),
+            PreTranslatedContext(
+                original="Jane", translated="Juana", description="Character name"
+            ),
         ]
 
         # Set up the mock to return our context when called
@@ -245,11 +264,10 @@ class TestTranslateFile(unittest.TestCase):
         self.assertEqual(mock_translate_context.call_count, 2)
 
         # Check that the result contains all the expected context items from both chunks
-        expected_result = context_result1 + context_result2
         self.assertEqual(result, expected_result)
 
-    @patch("main.translate_context")
-    @patch("main.chunk_dialogues")
+    @patch("translate.translate_context")
+    @patch("translate.chunk_dialogues")
     async def test_translate_prepare_empty_input(
         self, mock_chunk_dialogues, mock_translate_context
     ):

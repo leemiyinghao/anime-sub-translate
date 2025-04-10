@@ -1,15 +1,12 @@
-import os, asyncio, re, json, logging
+import asyncio, re, json, logging
+from production_litellm import litellm
 from typing import Optional, Iterable, AsyncGenerator, Type, List, Annotated, TypeVar
-
-from pydantic_core.core_schema import json_schema
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslatedContext
-import litellm
 from tqdm import tqdm
 from pydantic import BaseModel, BeforeValidator, ValidationError
 from litellm.cost_calculator import completion_cost
 from cost import CostTracker
-
-RETRY_TIMES = 5
+from setting import get_setting
 
 _logger = logging.getLogger(__name__)
 
@@ -116,8 +113,8 @@ async def _send_llm_request(
     :return: The translated text.
     """
     # Get model from environment variable or use default
-    extra_prompt = os.environ.get("LLM_EXTRA_PROMPT", "")
-    model = os.environ.get("LLM_MODEL", "gpt-3.5-turbo")
+    extra_prompt = get_setting().llm_extra_prompt
+    model = get_setting().llm_model
 
     user_message = dump_json(
         {
@@ -227,7 +224,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     )
 
     translated: list[SubtitleDialogue] = []
-    for retry in range(RETRY_TIMES):
+    for retried in range(get_setting().llm_retry_times):
         try:
             chunks = []
             if progress_bar is not None:
@@ -261,8 +258,10 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 _logger.error(f"{e.error_count()} validation errors")
             else:
                 _logger.error(f"Translation error: {e}")
-            if retry < RETRY_TIMES - 1:
-                after = min(2**retry, 60)
+            if retried < get_setting().llm_retry_times - 1:
+                after = get_setting().llm_retry_delay * (
+                    get_setting().llm_retry_backoff ** retried
+                )
                 _logger.info(f"Retrying after {after} seconds...")
                 await asyncio.sleep(after)
                 continue
@@ -304,7 +303,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     contexts: list[PreTranslatedContext] = []
     result = ""
 
-    for retry in range(RETRY_TIMES):
+    for retry in range(get_setting().llm_retry_times):
         try:
             if progress_bar is not None:
                 progress_bar.reset()
@@ -335,8 +334,10 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 _logger.error(f"{e.error_count()} validation errors")
             else:
                 _logger.error(f"Translation error: {e}")
-            if retry < RETRY_TIMES - 1:
-                after = min(2**retry, 60)
+            if retry < get_setting().llm_retry_times - 1:
+                after = get_setting().llm_retry_delay * (
+                    get_setting().llm_retry_backoff ** retry
+                )
                 _logger.info(f"Retrying after {after} seconds...")
                 await asyncio.sleep(after)
                 continue

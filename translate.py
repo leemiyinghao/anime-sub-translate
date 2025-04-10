@@ -1,4 +1,4 @@
-import os, argparse, asyncio
+import os, asyncio
 from format.format import SubtitleFormat
 from llm import translate_context, translate_dialouges
 from format import parse_subtitle_file
@@ -8,8 +8,8 @@ from tqdm.auto import tqdm
 from utils import chunk_dialogues, save_pre_translate_store, load_pre_translate_store
 from subtitle_types import PreTranslatedContext, SubtitleDialogue
 from typing import Iterable
-from cost import CostTracker
 from itertools import batched
+from setting import get_setting
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -17,9 +17,9 @@ logger.setLevel(logging.INFO)
 
 def get_language_postfix(target_language: str) -> str:
     """
-    Gets the language postfix from environment variables or defaults to the target language.
+    Gets the language postfix from setting or defaults to the target language.
     """
-    return os.environ.get("LANGUAGE_POSTFIX", target_language)
+    return get_setting().language_postfix or target_language
 
 
 def create_output_file_path(subtitle_file: str, language_postfix: str) -> str:
@@ -48,7 +48,7 @@ def write_translated_subtitle(translated_content: str, output_path: str) -> None
         with open(output_path, "w", encoding="utf-8") as file:
             file.write(translated_content.strip() + "\n")
     except Exception as e:
-        print(f"Error writing translated subtitle to {output_path}: {e}")
+        logging.error(f"Error writing translated subtitle to {output_path}: {e}")
 
 
 async def translate_file(
@@ -67,9 +67,9 @@ async def translate_file(
     #
     # Since we are translating, we can assume that the output tokens
     # will be similar to the input tokens.
-    max_chunk_size = int(os.environ.get("MAX_OUTPUT_TOKEN", "5000"))
+    max_chunk_size = min(get_setting().max_output_token, get_setting().max_input_token)
     chunks = chunk_dialogues(subtitle_content.dialogues(), max_chunk_size)
-    concurrency = int(os.environ.get("CONCURRENCY", "16"))
+    concurrency = get_setting().concurrency
     logger.info(f"Total chunks: {len(chunks)}")
 
     translated_dialogues = []
@@ -78,7 +78,7 @@ async def translate_file(
         tasks = []
         for idx, dialogue_chunk in chunk_group:
             progress_bar = None
-            if os.environ.get("VERBOSE", "0") == "1":
+            if get_setting().verbose:
                 progress_bar = tqdm(
                     desc=f"Translating chunk {idx + 1}/{len(chunks)}",
                     position=idx + 1,
@@ -95,7 +95,7 @@ async def translate_file(
         translated_chunk_group: list[list[SubtitleDialogue]] = await asyncio.gather(
             *tasks
         )
-        if os.environ.get("VERBOSE", "0") == "1":
+        if get_setting().verbose:
             logger.info("Translated chunk:")
             for idx, dialogue in enumerate(
                 [dialogue for _chunk in translated_chunk_group for dialogue in _chunk]
@@ -124,7 +124,7 @@ async def translate_prepare(
     #
     # Since we are only extracting context, output tokens will be far
     # less than input tokens. The output tokens is ignorable.
-    max_chunk_size = int(os.environ.get("MAX_INPUT_TOKEN", "5000000"))
+    max_chunk_size = get_setting().max_input_token
     dialogues = []
     for subtitle_content in subtitle_contents:
         dialogues.extend(subtitle_content.dialogues())
@@ -149,7 +149,7 @@ async def translate_prepare(
                 context["original"]: context for context in pre_translated_context
             }.items()
         ]
-        if os.environ.get("VERBOSE", "0") == "1":
+        if get_setting().verbose:
             logger.info("Update context:")
             for idx, context in enumerate(pre_translated_context):
                 logger.info(
@@ -221,39 +221,10 @@ def translate(path: str, target_language: str) -> None:
             write_translated_subtitle(translated_content.as_str(), output_path)
             logger.info(f"Translated content wrote: {output_path[-60:]}")
 
-        print(f"All subtitles translated successfully ({len(subtitle_paths)} files)")
+        logging.info(
+            f"All subtitles translated successfully ({len(subtitle_paths)} files)"
+        )
 
     except Exception as e:
-        print(f"Error translating subtitles: {e}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Translate subtitles to a target language."
-    )
-    parser.add_argument(
-        "target_language", type=str, help="Target language for translation."
-    )
-    parser.add_argument("path", type=str, help="Path to the subtitle files.")
-
-    args = parser.parse_args()
-
-    # loading extra environment from .env file, we need some environment variables like OPENROUTER_API_KEY for litellm
-    try:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-        print("Environment variables loaded from .env file")
-    except ImportError:
-        print("dotenv package not found. Install with: pip install python-dotenv")
-    except Exception as e:
-        print(f"Error loading .env file: {e}")
-
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
-    translate(args.path, args.target_language)
-
-    logger.info("Translation completed.")
-    logger.info(f"Estimated cost: {CostTracker().get_cost():.5f} USD")
+        logging.error(f"Error translating subtitles: {e}")
+        raise
