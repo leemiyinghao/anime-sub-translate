@@ -60,7 +60,11 @@ async def _send_llm_request(
         }
     )
     messages = [
-        {"role": "system", "content": "\n".join(instructions)},
+        *[{"role": "system", "content": instruction} for instruction in instructions],
+        {
+            "role": "system",
+            "content": "Response JSON does not need indentation and newline.",
+        },
     ]
     if pretranslate:
         json_pretranslate = dump_json(
@@ -220,10 +224,10 @@ async def translate_context(
 
 Important instructions:
 1. Identify rare words that appear frequently in the text.
-2. Always provide translations for these words in {target_language}.
-4. Only include actual rare names of entities. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
-5. Character name should always be noted.
-6. Duplicate names should be merged into one entry."""
+2. Always provide translations in {target_language}.
+4. Only include actual rare terms of entities. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
+5. Character name should always be noted and translate into {target_language}.
+6. Duplication not allowed."""
 
     formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
@@ -236,7 +240,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
 
     if previous_translated:
         messages.append(
-            f"Here are previous context note you take. Must reuse and output them, you may refine it based on new information or if it against the rule:\n {dump_json(PreTranslatedContextSetDTO.from_contexts(previous_translated))}"
+            f"Here are previous context note you take. Do not re-output them:\n {dump_json(PreTranslatedContextSetDTO.from_contexts(previous_translated))}"
         )
 
     contexts: list[PreTranslatedContext] = []
@@ -297,18 +301,19 @@ async def refine_context(
         Important instructions:
         1. Review the context note.
         2. Make sure all translations in {target_language} are correct.
-        4. Return every note after refinement."""
+        3. Return every note after refinement."""
 
     formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
-You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
+You don't have to keep the JSON string in ascii, you can use utf-8 encoding.
+Return only the context note, no other text is allowed."""
 
     messages = [system_message, formatting_instruction]
 
     if metadata:
         messages.append(matadata_prompt(metadata))
 
-    contexts = []
+    refined_contexts = []
     for retry in range(get_setting().llm_retry_times):
         chunks = []
         try:
@@ -324,7 +329,9 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
             result = "".join(chunks)
             if not result:
                 raise ValueError("Empty response from LLM")
-            contexts = parse_json(PreTranslatedContextSetDTO, result).to_contexts()
+            refined_contexts = parse_json(
+                PreTranslatedContextSetDTO, result
+            ).to_contexts()
         except Exception as e:
             if isinstance(e, ValidationError):
                 _logger.error(f"{e.error_count()} validation errors")
@@ -338,7 +345,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 await asyncio.sleep(after)
                 continue
             raise FailedAfterRetries() from e
-    return contexts
+    return refined_contexts
 
 
 def matadata_prompt(metadata: MediaSetMetadata) -> str:

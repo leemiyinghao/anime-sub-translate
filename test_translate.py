@@ -250,11 +250,14 @@ class TestTranslateFile(unittest.TestCase):
             PreTranslatedContext(
                 original="Jane", translated="Juana", description="Character name"
             ),
+            PreTranslatedContext(
+                original="John", translated="Juan", description="Character name"
+            ),
         ]
 
         # Set up the mock to return our context when called
         mock_translate_context.side_effect = [context_result1, context_result2]
-        mock_refine_context.return_value = context_result2
+        mock_refine_context.return_value = expected_result
 
         # Call the function being tested
         result = await prepare_context(
@@ -264,7 +267,14 @@ class TestTranslateFile(unittest.TestCase):
         # Verify the function behaved as expected
         mock_chunk_dialogues.assert_called_once()
         self.assertEqual(mock_translate_context.call_count, 2)
-        mock_refine_context.assert_called_once()
+        self.maxDiff = None
+        self.assertEqual(
+            sorted(
+                mock_refine_context.call_args.kwargs["contexts"],
+                key=lambda c: c.original,
+            ),
+            sorted(expected_result, key=lambda c: c.original),
+        )
 
         # Check that the result contains all the expected context items from both chunks
         self.assertEqual(result, expected_result)

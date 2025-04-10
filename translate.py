@@ -167,12 +167,14 @@ async def prepare_context(
             previous_translated=pre_translated_context,
             metadata=metadata,
         )
-        pre_translated_context = list(context)
+        new_context = list(context)
         # deduplicate context by original
         pre_translated_context = [
             context
             for _, context in {
-                context.original: context for context in pre_translated_context
+                context.original: context
+                for context in pre_translated_context
+                + new_context  # new_context may overwrite pre_translated_context
             }.items()
         ]
         if get_setting().verbose:
