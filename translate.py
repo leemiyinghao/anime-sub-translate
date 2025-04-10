@@ -186,7 +186,8 @@ def prepare_metadata(
 ) -> Optional[MediaSetMetadata]:
     # resolve leaf directory name from path
     dir_name = os.path.abspath(path)
-    dir_name = os.path.dirname(dir_name)
+    if os.path.isfile(dir_name):
+        dir_name = os.path.dirname(dir_name)
     dir_name = os.path.basename(dir_name)
 
     title = dir_name.replace("_", " ").replace("-", " ")  # replace special characters
