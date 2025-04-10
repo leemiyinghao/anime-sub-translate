@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import re
+from collections import OrderedDict
 from itertools import batched
 from typing import Iterable, Optional
 
@@ -146,10 +147,11 @@ async def prepare_context(
     for subtitle_content in subtitle_contents:
         dialogues.extend(subtitle_content.dialogues())
 
-    # dedupe dialogues since we are only using it to find context
-    dialogues = [
-        d for d in {dialogue.content: dialogue for dialogue in dialogues}.values()
-    ]
+    # dedupe dialogues since we are only using it to find context, but keep the order
+    dialogue_map = OrderedDict()
+    for d in dialogues:
+        dialogue_map[d.content] = d
+    dialogues = [dialogue for dialogue in dialogue_map.values()]
 
     chunks = chunk_dialogues(dialogues, max_chunk_size)
 
