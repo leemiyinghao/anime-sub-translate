@@ -135,9 +135,10 @@ class TestTranslateFile(unittest.TestCase):
         self.assertEqual(result, self.mock_subtitle_format)
 
     @patch("translate.translate_context")
+    @patch("translate.refine_context")
     @patch("translate.chunk_dialogues")
     async def test_translate_prepare_basic(
-        self, mock_chunk_dialogues, mock_translate_context
+        self, mock_chunk_dialogues, mock_refine_context, mock_translate_context
     ):
         # Create a second mock subtitle format
         mock_subtitle_format2 = MagicMock(spec=SubtitleFormat)
@@ -174,6 +175,7 @@ class TestTranslateFile(unittest.TestCase):
 
         # Set up the mock to return our context when called
         mock_translate_context.return_value = context_result
+        mock_refine_context.return_value = context_result
 
         # Call the function being tested
         result = await prepare_context(
@@ -183,14 +185,16 @@ class TestTranslateFile(unittest.TestCase):
         # Verify the function behaved as expected
         mock_chunk_dialogues.assert_called_once_with(all_dialogues, 500000)
         mock_translate_context.assert_called_once()
+        mock_refine_context.assert_called_once()
 
         # Check that the result contains all the expected context items
         self.assertEqual(result, context_result)
 
     @patch("translate.translate_context")
+    @patch("translate.refine_context")
     @patch("translate.chunk_dialogues")
     async def test_translate_prepare_multiple_chunks(
-        self, mock_chunk_dialogues, mock_translate_context
+        self, mock_chunk_dialogues, mock_refine_context, mock_translate_context
     ):
         # Create a second mock subtitle format
         mock_subtitle_format2 = MagicMock(spec=SubtitleFormat)
@@ -250,6 +254,7 @@ class TestTranslateFile(unittest.TestCase):
 
         # Set up the mock to return our context when called
         mock_translate_context.side_effect = [context_result1, context_result2]
+        mock_refine_context.return_value = context_result2
 
         # Call the function being tested
         result = await prepare_context(
@@ -259,17 +264,23 @@ class TestTranslateFile(unittest.TestCase):
         # Verify the function behaved as expected
         mock_chunk_dialogues.assert_called_once()
         self.assertEqual(mock_translate_context.call_count, 2)
+        mock_refine_context.assert_called_once()
 
         # Check that the result contains all the expected context items from both chunks
         self.assertEqual(result, expected_result)
 
     @patch("translate.translate_context")
+    @patch("translate.refine_context")
     @patch("translate.chunk_dialogues")
     async def test_translate_prepare_empty_input(
-        self, mock_chunk_dialogues, mock_translate_context
+        self,
+        mock_chunk_dialogues,
+        mock_refine_context,
+        mock_translate_context,
     ):
         # Configure chunk_dialogues to return an empty list
         mock_chunk_dialogues.return_value = []
+        mock_refine_context.return_value = []
 
         # Call the function being tested with an empty list of subtitle formats
         result = await prepare_context([], "Spanish")
@@ -277,6 +288,7 @@ class TestTranslateFile(unittest.TestCase):
         # Verify the function behaved as expected
         mock_chunk_dialogues.assert_called_once_with([], 500000)
         mock_translate_context.assert_not_called()
+        mock_refine_context.assert_called_once()  # refine_context should be called even if empty
 
         # Check that the result is an empty list
         self.assertEqual(result, [])

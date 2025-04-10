@@ -194,6 +194,12 @@ async def prepare_context(
         progress_bar=progress_bar,
     )
     progress_bar.close()
+    pre_translated_context = [
+        context
+        for _, context in {
+            context.original: context for context in pre_translated_context
+        }.items()
+    ]
 
     return pre_translated_context
 
