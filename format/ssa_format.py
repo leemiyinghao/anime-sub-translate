@@ -1,8 +1,11 @@
-from pysubs2 import SSAFile
-from typing import Iterable
-from .format import SubtitleFormat
-from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
 import re
+from typing import Iterable
+
+from pysubs2 import SSAFile
+
+from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
+
+from .format import SubtitleFormat
 
 
 class SubtitleFormatSSA(SubtitleFormat):

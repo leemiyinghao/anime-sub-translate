@@ -1,9 +1,10 @@
+import asyncio
 import unittest
-import asyncio, os
-from unittest.mock import patch, MagicMock
-from translate import translate_file, translate_prepare
+from unittest.mock import MagicMock, patch
+
 from format.format import SubtitleFormat
-from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslatedContext
+from subtitle_types import PreTranslatedContext, RichSubtitleDialogue, SubtitleDialogue
+from translate import translate_file, translate_prepare
 
 
 class TestTranslateFile(unittest.TestCase):

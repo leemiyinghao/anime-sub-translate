@@ -1,5 +1,6 @@
 # type hint for subtitle format
 from typing import Optional
+
 from typing_extensions import TypedDict
 
 

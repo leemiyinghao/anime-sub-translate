@@ -1,14 +1,15 @@
-import unittest
 import os
 import tempfile
+import unittest
+
+from subtitle_types import PreTranslatedContext, RichSubtitleDialogue
 from utils import (
-    read_subtitle_file,
-    find_files_from_path,
     chunk_dialogues,
-    save_pre_translate_store,
+    find_files_from_path,
     load_pre_translate_store,
+    read_subtitle_file,
+    save_pre_translate_store,
 )
-from subtitle_types import RichSubtitleDialogue, PreTranslatedContext
 
 
 class TestUtils(unittest.TestCase):

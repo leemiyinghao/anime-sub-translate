@@ -1,5 +1,6 @@
+from typing import Iterable, TypeAlias
+
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
-from typing import TypeAlias, Generator, Iterable
 
 RawSubtitle: TypeAlias = str
 

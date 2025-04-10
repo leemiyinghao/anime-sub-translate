@@ -1,15 +1,23 @@
-import os, asyncio
+import asyncio
+import logging
+import os
+from itertools import batched
+from typing import Iterable
+
+from tqdm.auto import tqdm
+
+from format import parse_subtitle_file
 from format.format import SubtitleFormat
 from llm import translate_context, translate_dialouges
-from format import parse_subtitle_file
-from utils import read_subtitle_file, find_files_from_path
-import logging
-from tqdm.auto import tqdm
-from utils import chunk_dialogues, save_pre_translate_store, load_pre_translate_store
-from subtitle_types import PreTranslatedContext, SubtitleDialogue
-from typing import Iterable
-from itertools import batched
 from setting import get_setting
+from subtitle_types import PreTranslatedContext, SubtitleDialogue
+from utils import (
+    chunk_dialogues,
+    find_files_from_path,
+    load_pre_translate_store,
+    read_subtitle_file,
+    save_pre_translate_store,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -201,7 +209,7 @@ def translate(path: str, target_language: str) -> None:
             )
 
         for subtitle_path, subtitle_format in tqdm(
-            zip(subtitle_paths, subtitle_formats),
+            zip(subtitle_paths, subtitle_formats, strict=False),
             desc="Translate files",
             unit="file",
             total=len(subtitle_paths),

@@ -1,17 +1,18 @@
-import unittest
 import asyncio
 import json
-from unittest.mock import patch, AsyncMock
+import unittest
+from unittest.mock import AsyncMock, patch
+
 from llm import (
     FailedAfterRetries,
-    _simple_sanity_check,
-    translate_dialouges,
-    translate_context,
-    obj_or_json,
     SubtitleDialogueDTO,
+    _simple_sanity_check,
+    obj_or_json,
+    translate_context,
+    translate_dialouges,
 )
-from subtitle_types import RichSubtitleDialogue, SubtitleDialogue, PreTranslatedContext
 from setting import _Setting, set_setting
+from subtitle_types import PreTranslatedContext, RichSubtitleDialogue, SubtitleDialogue
 
 
 class TestLLM(unittest.TestCase):

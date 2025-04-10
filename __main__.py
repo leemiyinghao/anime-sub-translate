@@ -1,7 +1,9 @@
-import logging, argparse
+import argparse
+import logging
+
 from cost import CostTracker
-from translate import translate
 from setting import load_setting_with_env_file
+from translate import translate
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

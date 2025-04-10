@@ -1,6 +1,7 @@
-import unittest
 import os
 import tempfile
+import unittest
+
 from format.ssa_format import SubtitleFormatSSA
 
 

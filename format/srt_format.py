@@ -1,8 +1,10 @@
+from typing import Iterable, List
+
 import srt
 
-from typing import List, Iterable
-from .format import SubtitleFormat
 from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
+
+from .format import SubtitleFormat
 
 
 class SubtitleFormatSRT(SubtitleFormat):
