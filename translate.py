@@ -178,7 +178,9 @@ async def prepare_context(
         if get_setting().verbose:
             logger.info("Update context:")
             for idx, context in enumerate(pre_translated_context):
-                logger.info(f"  {idx}: {context.original} -> {context.translated}")
+                logger.info(
+                    f"  {idx}: {context.original} -> {context.translated} ({context.description})"
+                )
 
     return pre_translated_context
 
