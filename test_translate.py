@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from format.format import SubtitleFormat
-from subtitle_types import PreTranslatedContext, RichSubtitleDialogue, SubtitleDialogue
+from subtitle_types import PreTranslatedContext, SubtitleDialogue
 from translate import translate_file, translate_prepare
 
 
@@ -14,9 +14,9 @@ class TestTranslateFile(unittest.TestCase):
 
         # Sample dialogues for testing
         self.sample_dialogues = [
-            RichSubtitleDialogue(id=1, content="Hello", actor="John", style="Default"),
-            RichSubtitleDialogue(id=2, content="World", actor="Jane", style="Default"),
-            RichSubtitleDialogue(id=3, content="Test", actor="John", style="Default"),
+            SubtitleDialogue(id="1", content="Hello", actor="John", style="Default"),
+            SubtitleDialogue(id="2", content="World", actor="Jane", style="Default"),
+            SubtitleDialogue(id="3", content="Test", actor="John", style="Default"),
         ]
 
         # Sample pre-translated context
@@ -33,7 +33,7 @@ class TestTranslateFile(unittest.TestCase):
         self.mock_subtitle_format.dialogues.return_value = self.sample_dialogues
 
     @patch("translate.chunk_dialogues")
-    @patch("translate.translate_dialouges")
+    @patch("translate.translate_dialogues")
     async def test_translate_file_basic(
         self, mock_translate_dialogues, mock_chunk_dialogues
     ):
@@ -42,9 +42,9 @@ class TestTranslateFile(unittest.TestCase):
 
         # Mock the translated dialogues that would be returned by translate_dialogues
         translated_dialogues = [
-            SubtitleDialogue(id=1, content="Hola"),
-            SubtitleDialogue(id=2, content="Mundo"),
-            SubtitleDialogue(id=3, content="Prueba"),
+            SubtitleDialogue(id="1", content="Hola"),
+            SubtitleDialogue(id="2", content="Mundo"),
+            SubtitleDialogue(id="3", content="Prueba"),
         ]
 
         # Set up the mock to return our translated dialogues when called
@@ -62,7 +62,7 @@ class TestTranslateFile(unittest.TestCase):
         self.assertEqual(result, self.mock_subtitle_format)
 
     @patch("translate.chunk_dialogues")
-    @patch("translate.translate_dialouges")
+    @patch("translate.translate_dialogues")
     @patch("os.environ")
     async def test_translate_file_with_verbose(
         self, mock_environ, mock_translate_dialogues, mock_chunk_dialogues
@@ -78,9 +78,9 @@ class TestTranslateFile(unittest.TestCase):
 
         # Mock the translated dialogues
         translated_dialogues = [
-            SubtitleDialogue(id=1, content="Hola"),
-            SubtitleDialogue(id=2, content="Mundo"),
-            SubtitleDialogue(id=3, content="Prueba"),
+            SubtitleDialogue(id="1", content="Hola"),
+            SubtitleDialogue(id="2", content="Mundo"),
+            SubtitleDialogue(id="3", content="Prueba"),
         ]
 
         mock_translate_dialogues.return_value = translated_dialogues
@@ -97,7 +97,7 @@ class TestTranslateFile(unittest.TestCase):
         self.assertEqual(result, self.mock_subtitle_format)
 
     @patch("translate.chunk_dialogues")
-    @patch("translate.translate_dialouges")
+    @patch("translate.translate_dialogues")
     async def test_translate_file_multiple_chunks(
         self, mock_translate_dialogues, mock_chunk_dialogues
     ):
@@ -108,11 +108,11 @@ class TestTranslateFile(unittest.TestCase):
 
         # Mock the translated dialogues for each chunk
         translated_chunk1 = [
-            SubtitleDialogue(id=1, content="Hola"),
-            SubtitleDialogue(id=2, content="Mundo"),
+            SubtitleDialogue(id="1", content="Hola"),
+            SubtitleDialogue(id="2", content="Mundo"),
         ]
         translated_chunk2 = [
-            SubtitleDialogue(id=3, content="Prueba"),
+            SubtitleDialogue(id="3", content="Prueba"),
         ]
 
         # Set up the mock to return our translated dialogues when called
@@ -144,10 +144,8 @@ class TestTranslateFile(unittest.TestCase):
 
         # Sample dialogues for the second format
         sample_dialogues2 = [
-            RichSubtitleDialogue(id=4, content="Another", actor="Bob", style="Default"),
-            RichSubtitleDialogue(
-                id=5, content="Example", actor="Alice", style="Default"
-            ),
+            SubtitleDialogue(id="4", content="Another", actor="Bob", style="Default"),
+            SubtitleDialogue(id="5", content="Example", actor="Alice", style="Default"),
         ]
 
         # Configure the mocks to return our sample dialogues
@@ -199,10 +197,8 @@ class TestTranslateFile(unittest.TestCase):
 
         # Sample dialogues for the second format
         sample_dialogues2 = [
-            RichSubtitleDialogue(id=4, content="Another", actor="Bob", style="Default"),
-            RichSubtitleDialogue(
-                id=5, content="Example", actor="Alice", style="Default"
-            ),
+            SubtitleDialogue(id="4", content="Another", actor="Bob", style="Default"),
+            SubtitleDialogue(id="5", content="Example", actor="Alice", style="Default"),
         ]
 
         # Configure the mocks to return our sample dialogues

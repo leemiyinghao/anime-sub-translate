@@ -1,16 +1,21 @@
 import asyncio
-import json
 import logging
-import re
-from typing import Annotated, AsyncGenerator, Iterable, List, Optional, Type, TypeVar
-
-from pydantic import BaseModel, BeforeValidator, ValidationError
-from tqdm import tqdm
+from typing import AsyncGenerator, Iterable, Optional, Type
 
 from cost import CostTracker
 from production_litellm import completion_cost, litellm
+from pydantic import BaseModel, ValidationError
 from setting import get_setting
-from subtitle_types import PreTranslatedContext, RichSubtitleDialogue, SubtitleDialogue
+from subtitle_types import PreTranslatedContext, SubtitleDialogue
+from tqdm import tqdm
+
+from .dto import (
+    DialogueSetRequestDTO,
+    DialogueSetResponseDTO,
+    PreTranslatedContextSetDTO,
+    dump_json,
+    parse_json,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -26,88 +31,12 @@ class FailedAfterRetries(Exception):
     pass
 
 
-T = TypeVar("T", bound=BaseModel)
-
-
-def obj_or_json(model: Type[T], obj: T | str) -> T:
-    """
-    Converts a string to a JSON object or returns the object as is.
-    Aiming to solve double-serialization issue experienced with Gemini 2.0 Flash.
-    """
-    if isinstance(obj, str):
-        return model.model_validate_json(obj)
-    return obj
-
-
-class SubtitleDialogueDTO(BaseModel):
-    """
-    DTO for subtitle dialogue.
-    """
-
-    id: int
-    content: str
-
-
-class DialogueResponseDTO(BaseModel):
-    """
-    Response DTO for dialogues translation.
-    """
-
-    subtitles: Annotated[
-        List[SubtitleDialogueDTO],
-        BeforeValidator(lambda v: [obj_or_json(SubtitleDialogueDTO, i) for i in v]),
-    ]
-
-
-class PreTranslatedContextDTO(BaseModel):
-    """
-    DTO for pre-translated context.
-    """
-
-    original: str
-    translated: str
-    description: Optional[str] = None
-
-
-class ContextResponseDTO(BaseModel):
-    """
-    Response DTO for context translation.
-    """
-
-    context: Annotated[
-        List[PreTranslatedContextDTO],
-        BeforeValidator(lambda v: [obj_or_json(PreTranslatedContextDTO, i) for i in v]),
-    ]
-
-
-def dump_json(obj: object) -> str:
-    """
-    Dumps a Python object to a JSON string.
-    :param obj: The object to dump.
-    :return: The JSON string.
-    """
-    return json.dumps(obj, ensure_ascii=False)
-
-
-def parse_json(model: Type[T], json_str: str) -> T:
-    """
-    Parses a JSON string to a Python object.
-    :param model: The model to parse the JSON string into.
-    :param json_str: The JSON string to parse.
-    :return: The parsed object.
-    """
-    # remove code block wrapper
-    if json_str.startswith("```json") and json_str.endswith("```"):
-        json_str = json_str[7:-3].strip()
-    return model.model_validate_json(json_str)
-
-
 async def _send_llm_request(
     *,
     content: str,
     instructions: Iterable[str],
     json_schema: Type[BaseModel],
-    pretranslate: Optional[Iterable[PreTranslatedContext]] = None,
+    pretranslate: Optional[PreTranslatedContextSetDTO] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Request translation from litellm.
@@ -170,7 +99,7 @@ async def _send_llm_request(
 
 
 def _simple_sanity_check(
-    original: Iterable[RichSubtitleDialogue], translated: Iterable[SubtitleDialogue]
+    original: Iterable[SubtitleDialogue], translated: Iterable[SubtitleDialogue]
 ) -> bool:
     """
     Perform a simple sanity check on the translation.
@@ -178,8 +107,8 @@ def _simple_sanity_check(
     :param translated: The translated text.
     :return: True if the translation passes the sanity check, False otherwise.
     """
-    original_ids = {dialogue["id"] for dialogue in original}
-    translated_ids = {dialogue["id"] for dialogue in translated}
+    original_ids = {dialogue.id for dialogue in original}
+    translated_ids = {dialogue.id for dialogue in translated}
     if original_ids != translated_ids:
         missing_ids = original_ids - translated_ids
         extra_ids = translated_ids - original_ids
@@ -188,8 +117,8 @@ def _simple_sanity_check(
     return True
 
 
-async def translate_dialouges(
-    original: Iterable[RichSubtitleDialogue],
+async def translate_dialogues(
+    original: Iterable[SubtitleDialogue],
     target_language: str,
     pretranslate: Optional[Iterable[PreTranslatedContext]] = None,
     progress_bar: Optional[tqdm] = None,
@@ -203,7 +132,7 @@ async def translate_dialouges(
     """
 
     if progress_bar is not None:
-        progress_bar.total = sum(len(dialogue["content"]) for dialogue in original)
+        progress_bar.total = sum(len(dialogue.content) for dialogue in original)
 
     system_message = f"""You are an experienced translator. Translate the text to {target_language}.
 Important instructions:
@@ -216,18 +145,12 @@ Important instructions:
     formatting_instruction = """Response example: { "subtitles": [{"id": 0, "content": "Hello"}, {"id": 1, "content": "World"}] }
 You don't need to return the actor and style information, just return the content and id.
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
-
-    json_content = dump_json(
-        [
-            {
-                "id": dialogue["id"],
-                "content": dialogue["content"],
-            }
-            for dialogue in original
-        ]
-    )
+    json_content = dump_json(DialogueSetRequestDTO.from_subtitle(original))
 
     translated: list[SubtitleDialogue] = []
+    _pretranslate = (
+        PreTranslatedContextSetDTO.from_contexts(pretranslate) if pretranslate else None
+    )
     for retried in range(get_setting().llm_retry_times):
         try:
             chunks = []
@@ -236,25 +159,20 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
             async for chunk in _send_llm_request(
                 content=json_content,
                 instructions=[system_message, formatting_instruction],
-                pretranslate=pretranslate,
-                json_schema=DialogueResponseDTO,
+                pretranslate=_pretranslate,
+                json_schema=DialogueSetResponseDTO,
             ):
                 chunks.append(chunk)
                 if progress_bar is not None:
                     progress_bar.update(len(chunk))
             result = "".join(chunks)
-            chunks = [
-                SubtitleDialogue(
-                    id=dialogue.id,
-                    # LLMs have a tendency to over-escape backslashes.
-                    content=re.sub(r"\\+", "\\\\", dialogue.content),
-                )
-                for dialogue in parse_json(DialogueResponseDTO, result).subtitles
-            ]
-            if not _simple_sanity_check(original, chunks):
+            translated_dialogues = parse_json(
+                DialogueSetResponseDTO, result
+            ).to_subtitles()
+            if not _simple_sanity_check(original, translated_dialogues):
                 raise ValueError("Translation failed sanity check.")
 
-            translated = chunks
+            translated = translated_dialogues
             break
 
         except Exception as e:
@@ -274,7 +192,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
 
 
 async def translate_context(
-    original: Iterable[RichSubtitleDialogue],
+    original: Iterable[SubtitleDialogue],
     target_language: str,
     previous_translated: Optional[Iterable[PreTranslatedContext]] = None,
     progress_bar: Optional[tqdm] = None,
@@ -301,7 +219,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     messages = [system_message, formatting_instruction]
     if previous_translated:
         messages.append(
-            f"Here are previous context note you take. Must reuse and output them, you may refine it based on new information or if it against the rule:\n {dump_json(previous_translated)}"
+            f"Here are previous context note you take. Must reuse and output them, you may refine it based on new information or if it against the rule:\n {dump_json(PreTranslatedContextSetDTO.from_contexts(previous_translated))}"
         )
 
     contexts: list[PreTranslatedContext] = []
@@ -313,9 +231,9 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 progress_bar.reset()
             chunks = []
             async for chunk in _send_llm_request(
-                content="\n".join([dialogue["content"] for dialogue in original]),
+                content="\n".join([dialogue.content for dialogue in original]),
                 instructions=messages,
-                json_schema=ContextResponseDTO,
+                json_schema=PreTranslatedContextSetDTO,
             ):
                 chunks.append(chunk)
                 if progress_bar is not None:
@@ -323,14 +241,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
             result = "".join(chunks)
             if not result:
                 raise ValueError("Empty response from LLM")
-            contexts = [
-                PreTranslatedContext(
-                    original=dialogue.original,
-                    translated=dialogue.translated,
-                    description=dialogue.description,
-                )
-                for dialogue in parse_json(ContextResponseDTO, result).context
-            ]
+            contexts = parse_json(PreTranslatedContextSetDTO, result).to_contexts()
             break  # Exit the retry loop if successful
 
         except Exception as e:

@@ -1,8 +1,7 @@
 from typing import Iterable, List
 
 import srt
-
-from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
+from subtitle_types import SubtitleDialogue
 
 from .format import SubtitleFormat
 
@@ -26,7 +25,7 @@ class SubtitleFormatSRT(SubtitleFormat):
         """
         return filename.lower().endswith(".srt")
 
-    def dialogues(self) -> Iterable[RichSubtitleDialogue]:
+    def dialogues(self) -> Iterable[SubtitleDialogue]:
         """
         Returns a string representation of the dialogue in the SRT format.
         :param raw: The raw text of the subtitle file.
@@ -35,10 +34,10 @@ class SubtitleFormatSRT(SubtitleFormat):
         # Sort the subtitles by start time
         sorted_subtitles = sorted(self._raw_format, key=lambda x: x.start)
         for idx, subtitle in enumerate(sorted_subtitles):
-            yield RichSubtitleDialogue(
-                id=idx,
+            yield SubtitleDialogue(
+                id=_serialize_id(idx),
                 content=subtitle.content,
-                character=None,  # SRT does not have character information
+                actor=None,  # SRT does not have character information
                 style=None,  # SRT does not have style information
             )
 
@@ -49,6 +48,15 @@ class SubtitleFormatSRT(SubtitleFormat):
         """
         for new_subtitle in subtitle_dialogues:
             # Update the content of the subtitle
-            if new_subtitle["id"] >= len(self._raw_format):
+            _id = _deserialize_id(new_subtitle.id)
+            if _id >= len(self._raw_format):
                 raise IndexError("Subtitle ID out of range")
-            self._raw_format[new_subtitle["id"]].content = new_subtitle["content"]
+            self._raw_format[_id].content = new_subtitle.content
+
+
+def _serialize_id(id: int) -> str:
+    return f"{id}"
+
+
+def _deserialize_id(id: str) -> int:
+    return int(id)

@@ -8,15 +8,17 @@ from tqdm.auto import tqdm
 
 from format import parse_subtitle_file
 from format.format import SubtitleFormat
-from llm import translate_context, translate_dialouges
+from llm import translate_context, translate_dialogues
 from setting import get_setting
+from store import (
+    load_pre_translate_store,
+    save_pre_translate_store,
+)
 from subtitle_types import PreTranslatedContext, SubtitleDialogue
 from utils import (
     chunk_dialogues,
     find_files_from_path,
-    load_pre_translate_store,
     read_subtitle_file,
-    save_pre_translate_store,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,7 +95,7 @@ async def translate_file(
                     total=len(dialogue_chunk),
                 )
             tasks.append(
-                translate_dialouges(
+                translate_dialogues(
                     original=dialogue_chunk,
                     target_language=target_language,
                     pretranslate=pre_translated_context,
@@ -108,7 +110,7 @@ async def translate_file(
             for idx, dialogue in enumerate(
                 [dialogue for _chunk in translated_chunk_group for dialogue in _chunk]
             ):
-                logger.info(f"  {idx}: {dialogue['content']}")
+                logger.info(f"  {idx}: {dialogue.content}")
         translated_dialogues.extend(translated_chunk_group)
     for translated_chunk in translated_dialogues:
         subtitle_content.update(translated_chunk)
@@ -154,15 +156,13 @@ async def translate_prepare(
         pre_translated_context = [
             context
             for _, context in {
-                context["original"]: context for context in pre_translated_context
+                context.original: context for context in pre_translated_context
             }.items()
         ]
         if get_setting().verbose:
             logger.info("Update context:")
             for idx, context in enumerate(pre_translated_context):
-                logger.info(
-                    f"  {idx}: {context['original']} -> {context['translated']}"
-                )
+                logger.info(f"  {idx}: {context.original} -> {context.translated}")
 
     return pre_translated_context
 
@@ -205,7 +205,7 @@ def translate(path: str, target_language: str) -> None:
         logger.info("pre-translate context:")
         for context in pre_translate_context:
             logger.info(
-                f"  {context['original']} -> {context['translated']}: {context['description']} ({context['description']})"
+                f"  {context.original} -> {context.translated} ({context.description})"
             )
 
         for subtitle_path, subtitle_format in tqdm(

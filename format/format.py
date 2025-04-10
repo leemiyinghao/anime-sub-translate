@@ -1,6 +1,6 @@
 from typing import Iterable, TypeAlias
 
-from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
+from subtitle_types import SubtitleDialogue
 
 RawSubtitle: TypeAlias = str
 
@@ -40,7 +40,7 @@ class SubtitleFormat:
         """
         raise NotImplementedError("Subclasses should implement this!")
 
-    def dialogues(self) -> Iterable[RichSubtitleDialogue]:
+    def dialogues(self) -> Iterable[SubtitleDialogue]:
         """
         Returns a string representation of the dialogue in the subtitle format.
         :param raw: The raw text of the subtitle file.

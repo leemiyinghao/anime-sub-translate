@@ -2,6 +2,8 @@ import os
 import tempfile
 import unittest
 
+from subtitle_types import SubtitleDialogue
+
 from format.srt_format import SubtitleFormatSRT
 
 
@@ -28,7 +30,7 @@ Third subtitle with special characters:
         self.temp_file = tempfile.NamedTemporaryFile(suffix=".srt", delete=False)
         self.temp_file.write(self.sample_srt.encode("utf-8"))
         self.temp_file.close()
-        
+
         # Initialize the subtitle format with the file
         self.srt_format = SubtitleFormatSRT(self.temp_file.name)
         self.srt_format.raw = self.sample_srt
@@ -54,46 +56,44 @@ Third subtitle with special characters:
     def test_dialogues_extraction(self):
         """Test that dialogues correctly extracts SubtitleDialogue objects from SRT format"""
         dialogues = list(self.srt_format.dialogues())
-        
+        expected = [
+            SubtitleDialogue(id="0", content="Hello, world!\nMy name is John Doe."),
+            SubtitleDialogue(
+                id="1", content="This is a second subtitle.\nWith multiple lines."
+            ),
+            SubtitleDialogue(
+                id="2", content="Third subtitle with special characters:\n!@#$%^&*()_+"
+            ),
+        ]
+
         # Check we have the right number of dialogues
-        self.assertEqual(len(dialogues), 3)
-        
-        # Check the content of each dialogue
-        self.assertEqual(dialogues[0]["content"], "Hello, world!\nMy name is John Doe.")
-        self.assertEqual(dialogues[1]["content"], "This is a second subtitle.\nWith multiple lines.")
-        self.assertEqual(dialogues[2]["content"], "Third subtitle with special characters:\n!@#$%^&*()_+")
-        
-        # Check that character and style are None (SRT doesn't have these)
-        for dialogue in dialogues:
-            self.assertIsNone(dialogue["character"])
-            self.assertIsNone(dialogue["style"])
+        self.assertEqual(dialogues, expected)
 
     def test_update(self):
         """Test updating subtitle content"""
         # Get the dialogues
         dialogues = list(self.srt_format.dialogues())
-        
+
         # Modify the content
-        dialogues[0]["content"] = "Modified first subtitle"
-        dialogues[1]["content"] = "Modified second subtitle"
-        dialogues[2]["content"] = "Modified third subtitle"
-        
+        dialogues[0].content = "Modified first subtitle"
+        dialogues[1].content = "Modified second subtitle"
+        dialogues[2].content = "Modified third subtitle"
+
         # Update the subtitle
         self.srt_format.update(iter(dialogues))
-        
+
         # Get the updated dialogues
         updated_dialogues = list(self.srt_format.dialogues())
-        
-        # Check the content was updated
-        self.assertEqual(updated_dialogues[0]["content"], "Modified first subtitle")
-        self.assertEqual(updated_dialogues[1]["content"], "Modified second subtitle")
-        self.assertEqual(updated_dialogues[2]["content"], "Modified third subtitle")
+
+        self.assertEqual(updated_dialogues, dialogues)
 
     def test_update_with_invalid_id(self):
         """Test updating with an invalid subtitle ID"""
         # Create a dialogue with an ID that's out of range
-        invalid_dialogue = {"id": 999, "content": "Invalid", "character": None, "style": None}
-        
+        invalid_dialogue = SubtitleDialogue(
+            id="999", content="Invalid", actor=None, style=None
+        )
+
         # Attempt to update with the invalid dialogue
         with self.assertRaises(IndexError):
             self.srt_format.update([invalid_dialogue])

@@ -1,9 +1,8 @@
 import re
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from pysubs2 import SSAFile
-
-from subtitle_types import RichSubtitleDialogue, SubtitleDialogue
+from subtitle_types import SubtitleDialogue
 
 from .format import SubtitleFormat
 
@@ -15,6 +14,7 @@ class SubtitleFormatSSA(SubtitleFormat):
     """
 
     _raw_format: SSAFile
+    _dialogues: Mapping[str, SubtitleDialogue]
 
     def init_subtitle(self) -> None:
         """
@@ -32,7 +32,7 @@ class SubtitleFormatSSA(SubtitleFormat):
         """
         return filename[-4:].lower() in (".ssa", ".ass")
 
-    def dialogues(self) -> Iterable[RichSubtitleDialogue]:
+    def dialogues(self) -> Iterable[SubtitleDialogue]:
         """
         Returns a string representation of the dialogue in the SSA format.
         :param raw: The raw text of the subtitle file.
@@ -41,8 +41,8 @@ class SubtitleFormatSSA(SubtitleFormat):
         # Sort the subtitles by start time
         sorted_subtitles = sorted(enumerate(self._raw_format), key=lambda x: x[1].start)
         for idx, subtitle in sorted_subtitles:
-            yield RichSubtitleDialogue(
-                id=idx,
+            yield SubtitleDialogue(
+                id=_serialize_id(idx),
                 content=subtitle.text,
                 actor=subtitle.name or None,
                 style=subtitle.style or None,
@@ -55,12 +55,11 @@ class SubtitleFormatSSA(SubtitleFormat):
         """
         for new_subtitle in subtitle_dialogues:
             # Update the content of the subtitle
-            if new_subtitle["id"] >= len(self._raw_format):
+            _id = _deserialize_id(new_subtitle.id)
+            if _id >= len(self._raw_format):
                 raise IndexError("Subtitle ID out of range")
             # Replace new lines with \N in the SSA format
-            self._raw_format[new_subtitle["id"]].text = re.sub(
-                r"\n", r"\\N", new_subtitle["content"]
-            )
+            self._raw_format[_id].text = re.sub(r"\n", r"\\N", new_subtitle.content)
 
     def update_title(self, title: str) -> None:
         """
@@ -75,3 +74,11 @@ class SubtitleFormatSSA(SubtitleFormat):
         :return: The raw text of the subtitle file.
         """
         return self._raw_format.to_string("ass", encoding="utf-8")
+
+
+def _serialize_id(id: int) -> str:
+    return f"{id}"
+
+
+def _deserialize_id(id: str) -> int:
+    return int(id)

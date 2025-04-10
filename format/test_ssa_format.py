@@ -2,6 +2,8 @@ import os
 import tempfile
 import unittest
 
+from subtitle_types import SubtitleDialogue
+
 from format.ssa_format import SubtitleFormatSSA
 
 
@@ -67,34 +69,50 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
 
     def test_dialogues_extraction(self):
         """Test that dialogues correctly extracts SubtitleDialogue objects from SSA format"""
+        expected = [
+            SubtitleDialogue(id="0", content="Hello, world!", style="Default"),
+            SubtitleDialogue(
+                id="1", content="This is a second subtitle.", style="Default"
+            ),
+            SubtitleDialogue(
+                id="2",
+                content="{{pos(400,570)}}Third subtitle with formatting.",
+                style="Default",
+            ),
+            SubtitleDialogue(
+                id="3", content="Line with \\Nnewline character.", style="Default"
+            ),
+        ]
+
         dialogues = list(self.ssa_format.dialogues())
 
-        # Check we have the right number of dialogues
-        self.assertEqual(len(dialogues), 4)
-
-        # Check the content of each dialogue
-        self.assertEqual(dialogues[0]["content"], "Hello, world!")
-        self.assertEqual(dialogues[1]["content"], "This is a second subtitle.")
-        self.assertEqual(
-            dialogues[2]["content"], "{{pos(400,570)}}Third subtitle with formatting."
-        )
-        self.assertEqual(dialogues[3]["content"], "Line with \\Nnewline character.")
-
-        # Check that character is None (not set in our sample)
-        for dialogue in dialogues:
-            self.assertIsNone(dialogue["actor"])
-            self.assertEqual(dialogue["style"], "Default")
+        self.assertEqual(dialogues, expected)
 
     def test_update(self):
         """Test updating subtitle content"""
+        expected = [
+            SubtitleDialogue(
+                id="0", content="Modified first subtitle", style="Default"
+            ),
+            SubtitleDialogue(
+                id="1", content="Modified second subtitle", style="Default"
+            ),
+            SubtitleDialogue(
+                id="2", content="Modified third subtitle", style="Default"
+            ),
+            SubtitleDialogue(
+                id="3", content="Modified fourth \\Nsubtitle", style="Default"
+            ),
+        ]
+
         # Get the dialogues
         dialogues = list(self.ssa_format.dialogues())
 
         # Modify the content
-        dialogues[0]["content"] = "Modified first subtitle"
-        dialogues[1]["content"] = "Modified second subtitle"
-        dialogues[2]["content"] = "Modified third subtitle"
-        dialogues[3]["content"] = "Modified fourth \nsubtitle"
+        dialogues[0].content = "Modified first subtitle"
+        dialogues[1].content = "Modified second subtitle"
+        dialogues[2].content = "Modified third subtitle"
+        dialogues[3].content = "Modified fourth \nsubtitle"
 
         # Update the subtitle
         self.ssa_format.update(iter(dialogues))
@@ -102,21 +120,13 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         # Get the updated dialogues
         updated_dialogues = list(self.ssa_format.dialogues())
 
-        # Check the content was updated
-        self.assertEqual(updated_dialogues[0]["content"], "Modified first subtitle")
-        self.assertEqual(updated_dialogues[1]["content"], "Modified second subtitle")
-        self.assertEqual(updated_dialogues[2]["content"], "Modified third subtitle")
-        self.assertEqual(updated_dialogues[3]["content"], r"Modified fourth \Nsubtitle")
+        # Check that the updated dialogues match the expected content
+        self.assertEqual(updated_dialogues, expected)
 
     def test_update_with_invalid_id(self):
         """Test updating with an invalid subtitle ID"""
         # Create a dialogue with an ID that's out of range
-        invalid_dialogue = {
-            "id": 999,
-            "content": "Invalid",
-            "character": None,
-            "style": None,
-        }
+        invalid_dialogue = SubtitleDialogue(id="999", content="Invalid")
 
         # Attempt to update with the invalid dialogue
         with self.assertRaises(IndexError):

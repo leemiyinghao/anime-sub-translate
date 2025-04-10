@@ -2,13 +2,11 @@ import os
 import tempfile
 import unittest
 
-from subtitle_types import PreTranslatedContext, RichSubtitleDialogue
+from subtitle_types import SubtitleDialogue
 from utils import (
     chunk_dialogues,
     find_files_from_path,
-    load_pre_translate_store,
     read_subtitle_file,
-    save_pre_translate_store,
 )
 
 
@@ -56,18 +54,10 @@ class TestUtils(unittest.TestCase):
     def test_chunk_dialogues(self):
         # Create sample dialogues
         dialogues = [
-            RichSubtitleDialogue(
-                id=1, content="A" * 2000, actor="John", style="Default"
-            ),
-            RichSubtitleDialogue(
-                id=2, content="B" * 2000, actor="Jane", style="Default"
-            ),
-            RichSubtitleDialogue(
-                id=3, content="C" * 2000, actor="John", style="Default"
-            ),
-            RichSubtitleDialogue(
-                id=4, content="D" * 2000, actor="Jane", style="Default"
-            ),
+            SubtitleDialogue(id="1", content="A" * 2000, actor="John", style="Default"),
+            SubtitleDialogue(id="2", content="B" * 2000, actor="Jane", style="Default"),
+            SubtitleDialogue(id="3", content="C" * 2000, actor="John", style="Default"),
+            SubtitleDialogue(id="4", content="D" * 2000, actor="Jane", style="Default"),
         ]
 
         # Test chunking with default limit
@@ -86,35 +76,6 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(len(chunks), 1)
         self.assertEqual(len(chunks[0]), 0)
 
-    def test_pre_translate_store(self):
-        with tempfile.TemporaryDirectory() as test_dir:
-            # Create a test file path
-            test_file_path = os.path.join(test_dir, "test_subtitle.srt")
-            open(test_file_path, "w").close()
 
-            # Test saving and loading pre-translate store
-            pre_translate_context = [
-                PreTranslatedContext(
-                    original="Hello", translated="Hola", description="Greeting"
-                ),
-                PreTranslatedContext(
-                    original="World", translated="Mundo", description="Place"
-                ),
-            ]
-
-            # Save the pre-translate store
-            save_pre_translate_store(test_file_path, pre_translate_context)
-
-            # Check if the store file was created
-            store_path = os.path.join(
-                test_dir, ".translate", "pre_translate_store.json"
-            )
-            self.assertTrue(os.path.exists(store_path))
-
-            # Load the pre-translate store
-            loaded_context = load_pre_translate_store(test_file_path)
-            self.assertEqual(len(loaded_context), 2)
-            self.assertEqual(loaded_context[0]["original"], "Hello")
-            self.assertEqual(loaded_context[0]["translated"], "Hola")
-            self.assertEqual(loaded_context[1]["original"], "World")
-            self.assertEqual(loaded_context[1]["translated"], "Mundo")
+if __name__ == "__main__":
+    unittest.main()
