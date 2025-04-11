@@ -231,6 +231,7 @@ Important instructions:
 
     formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
+`original` should always be the source language.
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
 
     messages = [system_message, formatting_instruction]
@@ -240,7 +241,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
 
     if previous_translated:
         messages.append(
-            f"Here are previous context note you take. Do not re-output them:\n {dump_json(PreTranslatedContextSetDTO.from_contexts(previous_translated))}"
+            f"Here are previous context note you take. You may overwrite them by having the same `original` field. DO NOT re-output them:\n {dump_json(PreTranslatedContextSetDTO.from_contexts(previous_translated))}"
         )
 
     contexts: list[PreTranslatedContext] = []
@@ -301,11 +302,13 @@ async def refine_context(
         Important instructions:
         1. Review the context note.
         2. Make sure all translations in {target_language} are correct.
-        3. Return every note after refinement."""
+        3. Keep it concise, remove common terms.
+        4. Return whole note after refinement."""
 
     formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding.
+`original` should always be the source language.
 Return only the context note, no other text is allowed."""
 
     messages = [system_message, formatting_instruction]
@@ -316,6 +319,8 @@ Return only the context note, no other text is allowed."""
     refined_contexts = []
     for retry in range(get_setting().llm_retry_times):
         chunks = []
+        if progress_bar is not None:
+            progress_bar.reset()
         try:
             async for chunk in _send_llm_request(
                 content=dump_json(PreTranslatedContextSetDTO.from_contexts(contexts)),
