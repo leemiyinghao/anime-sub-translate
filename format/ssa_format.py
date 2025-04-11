@@ -48,7 +48,7 @@ class SubtitleFormatSSA(SubtitleFormat):
                     continue
                 yield SubtitleDialogue(
                     id=_serialize_id(idx, sidx),
-                    content=text,
+                    content=text.replace("\\N", "\n"),
                     actor=subtitle.name or None,
                     style=subtitle.style or None,
                 )
