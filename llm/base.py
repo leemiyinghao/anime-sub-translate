@@ -156,6 +156,8 @@ Important instructions:
 You don't need to return the actor and style information, just return the content and id.
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     json_content = dump_json(DialogueSetRequestDTO.from_subtitle(original))
+    if progress_bar is not None:
+        progress_bar.total = len(json_content)
 
     messages = [
         system_message,
@@ -229,10 +231,14 @@ Important instructions:
 5. Character name should always be noted and translate into {target_language}.
 6. Duplication not allowed."""
 
-    formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
+    formatting_instruction = (
+        """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
-`original` should always be the source language.
+`original`: term in source language, `translated`: term in target language ("""
+        + target_language
+        + """).
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
+    )
 
     messages = [system_message, formatting_instruction]
 
@@ -305,16 +311,24 @@ async def refine_context(
         3. Keep it concise, remove common terms.
         4. Return whole note after refinement."""
 
-    formatting_instruction = """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
+    formatting_instruction = (
+        """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
 Be aware that the description field is optional, use it only when necessary.
 You don't have to keep the JSON string in ascii, you can use utf-8 encoding.
-`original` should always be the source language.
+`original`: term in source language, `translated`: term in target language ("""
+        + target_language
+        + """).
 Return only the context note, no other text is allowed."""
+    )
 
     messages = [system_message, formatting_instruction]
 
     if metadata:
         messages.append(matadata_prompt(metadata))
+
+    json_content = dump_json(PreTranslatedContextSetDTO.from_contexts(contexts))
+    if progress_bar is not None:
+        progress_bar.total = len(json_content)
 
     refined_contexts = []
     for retry in range(get_setting().llm_retry_times):
@@ -323,7 +337,7 @@ Return only the context note, no other text is allowed."""
             progress_bar.reset()
         try:
             async for chunk in _send_llm_request(
-                content=dump_json(PreTranslatedContextSetDTO.from_contexts(contexts)),
+                content=json_content,
                 instructions=messages,
                 json_schema=PreTranslatedContextSetDTO,
             ):
