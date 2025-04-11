@@ -39,16 +39,20 @@ class SubtitleFormatSSA(SubtitleFormat):
         :return: A string representation of the dialogue in the SSA format, split by new lines.
         """
         # Sort the subtitles by start time
-        sorted_subtitles = sorted(enumerate(self._raw_format), key=lambda x: x[1].start)
+        sorted_subtitles = filter(
+            lambda x: x[1].type == "Dialogue",
+            sorted(enumerate(self._raw_format), key=lambda x: x[1].start),
+        )
         for idx, subtitle in sorted_subtitles:
             sections = _split_by_formatting(subtitle.text)
             for sidx, (text, is_formatting) in enumerate(sections):
-                if is_formatting:
+                text = text.replace(r"\\N", "\n")
+                if is_formatting or len(text.strip()) == 0:
                     # Skip formatting sections
                     continue
                 yield SubtitleDialogue(
                     id=_serialize_id(idx, sidx),
-                    content=text.replace("\\N", "\n"),
+                    content=text,
                     actor=subtitle.name or None,
                     style=subtitle.style or None,
                 )
