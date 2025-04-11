@@ -225,6 +225,7 @@ def translate(path: str, target_language: str) -> None:
         leave=True,
         position=0,
         colour="#8fbcbb",
+        bar_format="{desc} |{bar}| {percentage:3.2f}% [{elapsed}/{remaining}{postfix}]",
     )
     current_progress().set_progress_bar(progress_bar=progress_bar)
 
@@ -296,7 +297,7 @@ def translate(path: str, target_language: str) -> None:
         subtitle_paths, subtitle_formats, prog_subtitles, strict=False
     ):
         progress_bar.set_description(
-            f"[{os.path.dirname(path)}]: {os.path.basename(subtitle_path)}"
+            f"[{os.path.basename(os.path.dirname(path))}]: {os.path.basename(subtitle_path)}"
         )
         output_path = get_output_path(subtitle_path, target_language)
         if os.path.exists(output_path):
@@ -323,4 +324,5 @@ def translate(path: str, target_language: str) -> None:
 
         write_translated_subtitle(translated_content.as_str(), output_path)
         logger.info(f"Translated content wrote: {os.path.basename(output_path)}")
+    current_progress().finish()
     logger.info(f"All subtitles translated successfully ({len(subtitle_paths)} files)")

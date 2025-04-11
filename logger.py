@@ -1,11 +1,21 @@
 import logging
 from typing import Literal
 
+from xtermcolor import colorize
+
 logging.basicConfig(
+    level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
 logger = logging.getLogger("Anime-Sub-Translate")
+logger.propagate = False
+logger.handlers.clear()
+handler = logging.StreamHandler()
+handler.formatter = logging.Formatter(
+    f"{colorize('%(asctime)s - %(levelname)s - ', ansi=243)}%(message)s"
+)
+logger.addHandler(handler)
 
 LOG_LEVEL = Literal[
     "debug",
