@@ -18,6 +18,8 @@ from .dto import (
     DialogueSetRequestDTO,
     DialogueSetResponseDTO,
     PreTranslatedContextSetDTO,
+    PreTranslatedContextSetResponseDTO,
+    PromptedDTO,
     dump_json,
     parse_json,
 )
@@ -40,7 +42,8 @@ async def _send_llm_request(
     *,
     content: str,
     instructions: Iterable[str],
-    json_schema: Type[BaseModel],
+    action: str,
+    json_schema: Type[PromptedDTO],
     pretranslate: Optional[PreTranslatedContextSetDTO] = None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -54,43 +57,58 @@ async def _send_llm_request(
     extra_prompt = get_setting().llm_extra_prompt
     model = get_setting().llm_model
 
-    user_message = dump_json(
-        {
-            "subtitles": content,
-        }
-    )
+    pretranslate_message = []
+    if pretranslate:
+        plain_pretranslate = "\n".join(
+            [
+                f"{context.original} -> {context.translated} ({context.description or ''})"
+                for context in pretranslate.context
+            ]
+        )
+        pretranslate_message.append(
+            {
+                "role": "system",
+                "content": f"Use the following context for names and terms consistently:\n {plain_pretranslate}",
+            },
+        )
+
+    extra_prompts = []
+    if extra_prompt:
+        extra_prompts.append(
+            {
+                "role": "system",
+                "content": extra_prompt,
+            }
+        )
+
     messages = [
+        {
+            "role": "system",
+            "content": "Ensure using term that is correct and fit the style of story when translating.",
+        },
         *[{"role": "system", "content": instruction} for instruction in instructions],
+        *pretranslate_message,
+        {"role": "system", "content": content},
+        {
+            "role": "user",
+            "content": f"{json_schema.prompt()}",
+        },
         {
             "role": "system",
             "content": "Response JSON does not need indentation and newline.",
         },
+        {
+            "role": "user",
+            "content": action,
+        },
     ]
-    if pretranslate:
-        json_pretranslate = dump_json(
-            pretranslate,
-        )
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Use the following context for names and terms consistently:\n {json_pretranslate}",
-            },
-        )
-    if extra_prompt:
-        messages.append({"role": "system", "content": extra_prompt})
-
-    messages.append({"role": "user", "content": user_message})
 
     response = await litellm.acompletion(
         n=1,
         model=model,
         messages=messages,
         stream=True,
-        response_format={
-            "type": "json_schema",
-            "schema": json_schema.model_json_schema(),
-            "strict": True,
-        },
+        response_format={"type": "json_object"},
     )
 
     tokens = []
@@ -99,12 +117,16 @@ async def _send_llm_request(
         tokens.append(token)
         yield token
 
-    cost = completion_cost(
-        model=model,
-        prompt=user_message + "".join([m["content"] for m in messages]),
-        completion="".join(tokens),
-    )
-    CostTracker().add_cost(cost)
+    try:
+        cost = completion_cost(
+            model=model,
+            prompt="".join([m["content"] for m in messages]),
+            completion="".join(tokens),
+        )
+        CostTracker().add_cost(cost)
+    except:
+        # litellm may not support this model
+        pass
 
 
 def _simple_sanity_check(
@@ -144,24 +166,20 @@ async def translate_dialogues(
     if progress_bar is not None:
         progress_bar.total = sum(len(dialogue.content) for dialogue in original)
 
-    system_message = f"""You are an experienced translator. Translate the text to {target_language}.
+    system_message = f"""You are an experienced translator. Translating the text to {target_language}.
 Important instructions:
-1. Preserve all formatting exactly as they appear in the original content. Do not add or remove any formatting.
-2. Output dialogues in the same order and the same ID as the original content.
-3. Missing or incorrect IDs are not acceptable. Always return every ID.
-4. It's not necessary to keep the original text in the translation as long as the meaning is preserved.
-5. Any extra information, formatting, syntax, comments, or explanations in the output are not acceptable."""
+1. Consider fluency, meaning, coherence, style, context, and character personality.
+2. Output dialogues in the same ID as the original content as possible.
+3. Missing or incorrect IDs are not acceptable. Do not create new ID.
+4. Do not keep the original text in translated result.
+5. Any extra comments or explanations in the result are not acceptable."""
 
-    formatting_instruction = """Response example: { "subtitles": [{"id": 0, "content": "Hello"}, {"id": 1, "content": "World"}] }
-You don't need to return the actor and style information, just return the content and id.
-You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
     json_content = dump_json(DialogueSetRequestDTO.from_subtitle(original))
     if progress_bar is not None:
         progress_bar.total = len(json_content)
 
     messages = [
         system_message,
-        formatting_instruction,
     ]
     if metadata:
         messages.append(matadata_prompt(metadata))
@@ -176,7 +194,8 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
             if progress_bar is not None:
                 progress_bar.reset()
             async for chunk in _send_llm_request(
-                content=json_content,
+                action="Provide translated result.",
+                content=f"Subtitle in source language: {json_content}",
                 instructions=messages,
                 pretranslate=_pretranslate,
                 json_schema=DialogueSetResponseDTO,
@@ -185,6 +204,7 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 if progress_bar is not None:
                     progress_bar.update(len(chunk))
             result = "".join(chunks)
+            _logger.debug(f"LLM response:\n{result}")
             translated_dialogues = parse_json(
                 DialogueSetResponseDTO, result
             ).to_subtitles()
@@ -222,25 +242,15 @@ async def translate_context(
     :param original: The original text.
     :return: A list of important names and their translations.
     """
-    system_message = f"""You are an experienced translator preparing translate the following anime, tv series, or movie subtitle text. Scan the text and extract important entity translation context from it before translation them into {target_language}
+    system_message = f"""You are an experienced translator preparing translate the following anime, tv series, or movie subtitle text. Scan the text and extract important entity translation context from it before translation them into {target_language}, this will be used to provide consistent translation in the future.
 
 Important instructions:
-1. Identify rare words that appear frequently in the text.
-2. Always provide translations in {target_language}.
-4. Only include actual rare terms of entities. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
-5. Character name should always be noted and translate into {target_language}.
-6. Duplication not allowed."""
+1. Identify rare and improtant terms that need to be translated consistently.
+2. Common nouns, sentences or other text that are commonly used outside the context are not allowed.
+3. Character name are always important.
+4. Duplication or over-detailed are not allowed."""
 
-    formatting_instruction = (
-        """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
-Be aware that the description field is optional, use it only when necessary.
-`original`: term in source language, `translated`: term in target language ("""
-        + target_language
-        + """).
-You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
-    )
-
-    messages = [system_message, formatting_instruction]
+    messages = [system_message]
 
     if metadata:
         messages.append(matadata_prompt(metadata))
@@ -259,9 +269,11 @@ You don't have to keep the JSON string in ascii, you can use utf-8 encoding."""
                 progress_bar.reset()
             chunks = []
             async for chunk in _send_llm_request(
-                content="\n".join([dialogue.content for dialogue in original]),
+                action="Understand the story and provide context note that can help you translate the text consistently in the future.",
+                content="Subtitle in source language:\n"
+                + "\n".join([dialogue.content for dialogue in original]),
                 instructions=messages,
-                json_schema=PreTranslatedContextSetDTO,
+                json_schema=PreTranslatedContextSetResponseDTO,
             ):
                 chunks.append(chunk)
                 if progress_bar is not None:
@@ -303,30 +315,20 @@ async def refine_context(
     :return: The refined context.
     """
 
-    system_message = f"""You are an experienced translator preparing translate the following anime, tv series, or movie subtitle text. Refine the context note before translation them into {target_language}
+    system_message = f"""You are an experienced translator preparing translate the following anime, tv series, or movie subtitle text. Refine the context note before translation them into {target_language}, this will be used to provide consistent translation in the future.
+Important instructions:
+1. Review the context note.
+2. Make sure all translations are meaningfully correct.
+3. Make sure all translations are fit the style of story.
+4. Keep context note concise, remove common terms or unnecessary information."""
 
-        Important instructions:
-        1. Review the context note.
-        2. Make sure all translations in {target_language} are correct.
-        3. Keep it concise, remove common terms.
-        4. Return whole note after refinement."""
-
-    formatting_instruction = (
-        """Response example: `{ "context": [{"original": "Hello", "translated": "你好"}, {"original": "SEKAI", "translated": "世界", "description": "The same as world."}] }`
-Be aware that the description field is optional, use it only when necessary.
-You don't have to keep the JSON string in ascii, you can use utf-8 encoding.
-`original`: term in source language, `translated`: term in target language ("""
-        + target_language
-        + """).
-Return only the context note, no other text is allowed."""
-    )
-
-    messages = [system_message, formatting_instruction]
+    messages = [system_message]
 
     if metadata:
         messages.append(matadata_prompt(metadata))
 
     json_content = dump_json(PreTranslatedContextSetDTO.from_contexts(contexts))
+
     if progress_bar is not None:
         progress_bar.total = len(json_content)
 
@@ -337,9 +339,10 @@ Return only the context note, no other text is allowed."""
             progress_bar.reset()
         try:
             async for chunk in _send_llm_request(
+                action=f"Provide refined context note (from source language to {target_language}) that can help me translate the text consistently in the future.",
                 content=json_content,
                 instructions=messages,
-                json_schema=PreTranslatedContextSetDTO,
+                json_schema=PreTranslatedContextSetResponseDTO,
             ):
                 chunks.append(chunk)
                 if progress_bar is not None:

@@ -315,13 +315,7 @@ class TestLLM(unittest.TestCase):
         # Setup mock response
         async def mock_generator(*args, **kwargs):
             response = json.dumps(
-                {
-                    "subtitles": [
-                        {"id": "1", "content": "Hola"},
-                        {"id": "2", "content": "Mundo"},
-                        {"id": "3", "content": "Prueba"},
-                    ]
-                }
+                {"translated": {"1": "Hola", "2": "Mundo", "3": "Prueba"}}
             )
             for char in response:
                 yield char
@@ -366,12 +360,7 @@ class TestLLM(unittest.TestCase):
         # Setup mock response
         async def mock_generator(*args, **kwargs):
             response = json.dumps(
-                {
-                    "subtitles": [
-                        {"id": "1", "content": "Hola John"},
-                        {"id": "2", "content": "Bienvenido a Madrid"},
-                    ]
-                }
+                {"translated": {"1": "Hola John", "2": "Bienvenido a Madrid"}}
             )
             for char in response:
                 yield char
@@ -424,7 +413,7 @@ class TestLLM(unittest.TestCase):
     def test_translate_dialouges_with_progress_bar(self, mock_send_llm_request):
         # Setup mock response
         async def mock_generator(*args, **kwargs):
-            response = json.dumps({"subtitles": [{"id": "1", "content": "Hola"}]})
+            response = json.dumps({"translated": {"1": "Hola"}})
             for char in response:
                 yield char
 
@@ -466,7 +455,7 @@ class TestLLM(unittest.TestCase):
             if call_count == 1:
                 raise Exception("API Error")
 
-            response = json.dumps({"subtitles": [{"id": "1", "content": "Hola"}]})
+            response = json.dumps({"translated": {"1": "Hola"}})
             for char in response:
                 yield char
 
@@ -530,14 +519,7 @@ class TestLLM(unittest.TestCase):
     ):
         # Setup mock response
         async def mock_generator(*args, **kwargs):
-            response = json.dumps(
-                {
-                    "subtitles": [
-                        {"id": "1", "content": "Hola"},
-                        {"id": "2", "content": "Mundo"},
-                    ]
-                }
-            )
+            response = json.dumps({"translated": {"1": "Hola", "2": "Mundo"}})
             for char in response:
                 yield char
 

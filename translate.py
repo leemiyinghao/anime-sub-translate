@@ -164,7 +164,6 @@ async def prepare_context(
             original=dialogue_chunk,
             target_language=target_language,
             progress_bar=progress_bar,
-            previous_translated=pre_translated_context,
             metadata=metadata,
         )
         new_context = list(context)

@@ -1,6 +1,7 @@
 import json
 import re
-from typing import Annotated, Iterable, List, Type, TypeVar
+from abc import ABC, abstractmethod
+from typing import Annotated, Dict, Iterable, List, Type, TypeVar
 
 from pydantic import BaseModel, BeforeValidator
 from subtitle_types import PreTranslatedContext, SubtitleDialogue
@@ -53,6 +54,16 @@ def parse_json(model: Type[T], json_str: str) -> T:
     return model.model_validate_json(json_str)
 
 
+class PromptedDTO(ABC):
+    @classmethod
+    @abstractmethod
+    def prompt(cls) -> str:
+        """
+        Returns the prompt for the DTO.
+        """
+        pass
+
+
 class SubtitleDialogueRequestDTO(SubtitleDialogue):
     """
     Request DTO for subtitle dialogue.
@@ -80,6 +91,7 @@ class SubtitleDialogueResponseDTO(BaseModel):
         """
         # LLMs have a tendency to over-escape backslashes.
         transformed_content = re.sub(r"\\+", "\\\\", self.content)
+        transformed_content = re.sub(r"\\n", "\n", transformed_content)
         return SubtitleDialogue(
             **self.model_dump(exclude={"content"}), content=transformed_content
         )
@@ -104,23 +116,25 @@ class DialogueSetRequestDTO(BaseModel):
         )
 
 
-class DialogueSetResponseDTO(BaseModel):
+class DialogueSetResponseDTO(BaseModel, PromptedDTO):
     """
     Response DTO for dialogues translation.
     """
 
-    subtitles: Annotated[
-        List[SubtitleDialogueResponseDTO],
-        BeforeValidator(
-            lambda v: [obj_or_json(SubtitleDialogueResponseDTO, i) for i in v]
-        ),
-    ]
+    translated: Dict[str, str]
 
     def to_subtitles(self) -> list[SubtitleDialogue]:
         """
         Converts a DialogueSetResponseDTO to a list of SubtitleDialogue.
         """
-        return [i.to_subtitle() for i in self.subtitles]
+        return [SubtitleDialogue(id=i, content=j) for i, j in self.translated.items()]
+
+    @classmethod
+    def prompt(cls) -> str:
+        """
+        Returns the prompt for the DTO.
+        """
+        return """Provide translated result in a dictionary contain sets of subtitles with their IDs as keys and translated content as values.\nExample: `{"translated":{"1": "Hello", "2.0": "World"}}`."""
 
 
 class PreTranslatedContextDTO(PreTranslatedContext):
@@ -166,3 +180,12 @@ class PreTranslatedContextSetDTO(BaseModel):
         Converts a PreTranslatedContextSetDTO to a list of PreTranslatedContext.
         """
         return [i.to_context() for i in self.context]
+
+
+class PreTranslatedContextSetResponseDTO(PreTranslatedContextSetDTO, PromptedDTO):
+    @classmethod
+    def prompt(cls) -> str:
+        """
+        Returns the prompt for the DTO.
+        """
+        return """Provide translation context note as the follow example: `{"context":[{"original":"Hello","translated":"你好"},{"original":"Sekai","translated":"世界","description":"The same as world."}]}`, `original` is term in source language, `translated` is term in target language, description is optional."""
