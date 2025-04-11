@@ -1,10 +1,9 @@
 import asyncio
-import logging
 import os
 import re
 from collections import OrderedDict
 from itertools import batched
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional, TypeVar
 
 from tqdm.auto import tqdm
 
@@ -13,6 +12,7 @@ from format import parse_subtitle_file
 from format.format import SubtitleFormat
 from llm import refine_context, translate_context, translate_dialogues
 from logger import logger
+from progress import current_progress, progress
 from setting import get_setting
 from store import (
     load_media_set_metadata,
@@ -27,6 +27,7 @@ from utils import (
     read_subtitle_file,
 )
 
+F = TypeVar("F", bound=Callable)
 
 
 def get_language_postfix(target_language: str) -> str:
@@ -84,28 +85,21 @@ async def translate_file(
     # will be similar to the input tokens.
     max_chunk_size = min(get_setting().max_output_token, get_setting().max_input_token)
     chunks = chunk_dialogues(subtitle_content.dialogues(), max_chunk_size)
+    chunks = [(chunk, current_progress().sub_progress()) for chunk in chunks]
     concurrency = get_setting().concurrency
-    logger.info(f"Total chunks: {len(chunks)}")
 
     translated_dialogues = []
     # group chunks by concurrency
     for chunk_group in batched(enumerate(chunks), concurrency):
         tasks = []
-        for idx, dialogue_chunk in chunk_group:
-            progress_bar = None
-            if get_setting().verbose:
-                progress_bar = tqdm(
-                    desc=f"Translating chunk {idx + 1}/{len(chunks)}",
-                    position=idx + 1,
-                    total=len(dialogue_chunk),
-                )
+        for idx, (dialogue_chunk, prog) in chunk_group:
             tasks.append(
-                translate_dialogues(
+                prog.async_monitor(
+                    translate_dialogues,
                     original=dialogue_chunk,
                     target_language=target_language,
                     pretranslate=pre_translated_context,
                     metadata=metadata,
-                    progress_bar=progress_bar,
                 )
             )
         translated_chunk_group: list[list[SubtitleDialogue]] = await asyncio.gather(
@@ -153,16 +147,17 @@ async def prepare_context(
     dialogues = [dialogue for dialogue in dialogue_map.values()]
 
     chunks = chunk_dialogues(dialogues, max_chunk_size)
+    chunks = [
+        (chunk, current_progress().sub_progress()) for chunk in chunks
+    ]  # add progress bar to each chunk
+    refine_progress = current_progress().sub_progress()
 
     pre_translated_context = []
-    for idx, dialogue_chunk in enumerate(chunks):
-        progress_bar = tqdm(
-            desc=f"Pre-translating context {idx + 1}/{len(chunks)}",
-        )
-        context = await translate_context(
+    for idx, (dialogue_chunk, prog) in enumerate(chunks):
+        context = await prog.async_monitor(
+            translate_context,
             original=dialogue_chunk,
             target_language=target_language,
-            progress_bar=progress_bar,
             metadata=metadata,
         )
         new_context = list(context)
@@ -182,19 +177,14 @@ async def prepare_context(
                 logger.debug(
                     f"  {idx}: {context.original} -> {context.translated} ({context.description})"
                 )
-        progress_bar.close()
 
     # refine context
-    progress_bar = tqdm(
-        desc=f"Refining context",
-    )
-    pre_translated_context = await refine_context(
+    pre_translated_context = await refine_progress.async_monitor(
+        refine_context,
         contexts=pre_translated_context,
         target_language=target_language,
         metadata=metadata,
-        progress_bar=progress_bar,
     )
-    progress_bar.close()
     pre_translated_context = [
         context
         for _, context in {
@@ -231,90 +221,106 @@ def translate(path: str, target_language: str) -> None:
         :param target_language: Target language for translation.
         :param output_path: Path to save the translated subtitles.
     """
+    progress_bar = tqdm(
+        leave=True,
+        position=0,
+        colour="#8fbcbb",
+    )
+    current_progress().set_progress_bar(progress_bar=progress_bar)
 
-    try:
-        subtitle_paths = find_files_from_path(
-            path, get_language_postfix(target_language)
-        )
-        if not subtitle_paths:
-            logger.error(f"No subtitles found in {subtitle_paths}")
-            return
+    progress_bar.set_description(f"[{os.path.dirname(path)}]: Scanning files")
 
-        # read all files
-        subtitle_contents = []
-        for subtitle_path in subtitle_paths:
-            content = read_subtitle_file(subtitle_path)
-            subtitle_contents.append(content)
+    subtitle_paths = find_files_from_path(path, get_language_postfix(target_language))
+    if not subtitle_paths:
+        logger.error(f"No subtitles found in {subtitle_paths}")
+        return
 
-        subtitle_formats = [parse_subtitle_file(file) for file in subtitle_paths]
+    prog_pre_translate = current_progress().sub_progress()
+    prog_subtitles = [
+        current_progress().sub_progress() for _ in range(len(subtitle_paths))
+    ]
 
-        # mediaset metadata
-        metadata = None
-        if stored := load_media_set_metadata(path):
-            metadata = stored
-        else:
-            metadata = prepare_metadata(path)
-            if metadata:
-                save_media_set_metadata(path, metadata)
+    # read all files
+    subtitle_contents = []
+    for subtitle_path in subtitle_paths:
+        content = read_subtitle_file(subtitle_path)
+        subtitle_contents.append(content)
 
+    subtitle_formats = [parse_subtitle_file(file) for file in subtitle_paths]
+
+    # mediaset metadata
+    progress_bar.set_description(f"[{os.path.basename(path)}]: Prepare metadata")
+    metadata = None
+    if stored := load_media_set_metadata(path):
+        metadata = stored
+    else:
+        metadata = prepare_metadata(path)
         if metadata:
-            # print metadata
-            logger.info("Metadata:")
-            logger.info(f"  Title: {metadata.title} ({','.join(metadata.title_alt)})")
-            logger.info(f"  {metadata.description}")
-            logger.info(f"  Characters:")
-            for character in metadata.characters:
-                logger.info(
-                    f"    {character.name}, {character.gender} ({','.join(character.name_alt)})"
+            save_media_set_metadata(path, metadata)
+
+    if metadata:
+        # print metadata
+        logger.debug("Metadata:")
+        logger.debug(f"  Title: {metadata.title} ({','.join(metadata.title_alt)})")
+        logger.debug(f"  {metadata.description}")
+        logger.debug(f"  Characters:")
+        for character in metadata.characters:
+            logger.debug(
+                f"    {character.name}, {character.gender} ({','.join(character.name_alt)})"
+            )
+
+    # pre-translate context
+    progress_bar.set_description(
+        f"[{os.path.basename(os.path.dirname(path))}]: Pre-translate context"
+    )
+    pre_translate_context = None
+    if stored := load_pre_translate_store(path):
+        pre_translate_context = stored
+    else:
+        pre_translate_context = asyncio.run(
+            prog_pre_translate.async_monitor(
+                prepare_context, subtitle_formats, target_language, metadata=metadata
+            )
+        )
+        save_pre_translate_store(path, pre_translate_context)
+    prog_pre_translate.finish()
+
+    # Print pre-translate context and metadata
+    logger.debug("pre-translate context:")
+    for context in pre_translate_context:
+        logger.debug(
+            f"  {context.original} -> {context.translated} ({context.description})"
+        )
+
+    for subtitle_path, subtitle_format, prog in zip(
+        subtitle_paths, subtitle_formats, prog_subtitles, strict=False
+    ):
+        progress_bar.set_description(
+            f"[{os.path.dirname(path)}]: {os.path.basename(subtitle_path)}"
+        )
+        output_path = get_output_path(subtitle_path, target_language)
+        if os.path.exists(output_path):
+            logger.info(f"Output file {output_path} already exists. Skipping.")
+            prog.finish()
+            continue
+
+        with progress(prog):
+            try:
+                translated_content = asyncio.run(
+                    translate_file(
+                        subtitle_format,
+                        target_language,
+                        pre_translate_context,
+                        metadata=metadata,
+                    )
                 )
-
-        # pre-translate context
-        pre_translate_context = None
-        if stored := load_pre_translate_store(path):
-            pre_translate_context = stored
-        else:
-            pre_translate_context = asyncio.run(
-                prepare_context(subtitle_formats, target_language, metadata=metadata)
-            )
-            save_pre_translate_store(path, pre_translate_context)
-
-        # Print pre-translate context and metadata
-        logger.info("pre-translate context:")
-        for context in pre_translate_context:
-            logger.info(
-                f"  {context.original} -> {context.translated} ({context.description})"
-            )
-
-        for subtitle_path, subtitle_format in tqdm(
-            zip(subtitle_paths, subtitle_formats, strict=False),
-            desc="Translate files",
-            unit="file",
-            total=len(subtitle_paths),
-        ):
-            output_path = get_output_path(subtitle_path, target_language)
-            if os.path.exists(output_path):
-                logger.info(f"Output file {output_path} already exists.")
+            except Exception as e:
+                logger.error(f"Error translating file {subtitle_path}: {e}, skipping.")
                 continue
 
-            translated_content = asyncio.run(
-                translate_file(
-                    subtitle_format,
-                    target_language,
-                    pre_translate_context,
-                    metadata=metadata,
-                )
-            )
+        # replace Title line in support format like ASS/SSA
+        translated_content.update_title(f"{target_language} (AI Translated)")
 
-            # replace Title line in support format like ASS/SSA
-            translated_content.update_title(f"{target_language} (AI Translated)")
-
-            write_translated_subtitle(translated_content.as_str(), output_path)
-            logger.info(f"Translated content wrote: {output_path[-60:]}")
-
-        logging.info(
-            f"All subtitles translated successfully ({len(subtitle_paths)} files)"
-        )
-
-    except Exception as e:
-        logging.error(f"Error translating subtitles: {e}")
-        raise
+        write_translated_subtitle(translated_content.as_str(), output_path)
+        logger.info(f"Translated content wrote: {os.path.basename(output_path)}")
+    logger.info(f"All subtitles translated successfully ({len(subtitle_paths)} files)")

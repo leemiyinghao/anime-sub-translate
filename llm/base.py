@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Iterable, Optional, Type
 from cost import CostTracker
 from logger import logger
 from production_litellm import completion_cost, litellm
+from progress import current_progress
 from setting import get_setting
 from subtitle_types import (
     CharacterInfo,
@@ -11,7 +12,6 @@ from subtitle_types import (
     PreTranslatedContext,
     SubtitleDialogue,
 )
-from tqdm import tqdm
 
 from .dto import (
     DialogueSetRequestDTO,
@@ -150,7 +150,6 @@ async def translate_dialogues(
     target_language: str,
     pretranslate: Optional[Iterable[PreTranslatedContext]] = None,
     metadata: Optional[MediaSetMetadata] = None,
-    progress_bar: Optional[tqdm] = None,
 ) -> Iterable[SubtitleDialogue]:
     """
     Translates the given text to the target language using litellm.
@@ -159,9 +158,6 @@ async def translate_dialogues(
     :param pretranslate: Optional pre-translation important names.
     :return: The translated text.
     """
-
-    if progress_bar is not None:
-        progress_bar.total = sum(len(dialogue.content) for dialogue in original)
 
     system_message = f"""You are an experienced translator. Translating the text to {target_language}.
 Important instructions:
@@ -172,8 +168,6 @@ Important instructions:
 5. Any extra comments or explanations in the result are not acceptable."""
 
     json_content = dump_json(DialogueSetRequestDTO.from_subtitle(original))
-    if progress_bar is not None:
-        progress_bar.total = len(json_content)
 
     messages = [
         system_message,
@@ -185,11 +179,12 @@ Important instructions:
     _pretranslate = (
         PreTranslatedContextSetDTO.from_contexts(pretranslate) if pretranslate else None
     )
+
+    current_progress().set_total(len(json_content))
     for retried in range(get_setting().llm_retry_times):
         try:
+            current_progress().reset()
             chunks = []
-            if progress_bar is not None:
-                progress_bar.reset()
             async for chunk in _send_llm_request(
                 action="Provide translated result.",
                 content=f"Subtitle in source language: {json_content}",
@@ -198,17 +193,16 @@ Important instructions:
                 json_schema=DialogueSetResponseDTO,
             ):
                 chunks.append(chunk)
-                if progress_bar is not None:
-                    progress_bar.update(len(chunk))
+                current_progress().update(len(chunk))
             result = "".join(chunks)
-            _logger.debug(f"LLM response:\n{result}")
+            logger.debug(f"LLM response:\n{result}")
             translated_dialogues = parse_json(
                 DialogueSetResponseDTO, result
             ).to_subtitles()
             if not _simple_sanity_check(original, translated_dialogues):
                 raise ValueError("Translation failed sanity check.")
-
             translated = translated_dialogues
+            current_progress().finish()
             break
 
         except Exception as e:
@@ -229,7 +223,6 @@ async def translate_context(
     target_language: str,
     previous_translated: Optional[Iterable[PreTranslatedContext]] = None,
     metadata: Optional[MediaSetMetadata] = None,
-    progress_bar: Optional[tqdm] = None,
 ) -> list[PreTranslatedContext]:
     """
     Extracts frequently used entities and their translations from the original text.
@@ -255,27 +248,30 @@ Important instructions:
         )
 
     contexts: list[PreTranslatedContext] = []
+    content = "Subtitle in source language:\n" + "\n".join(
+        [dialogue.content for dialogue in original]
+    )
     result = ""
+
+    current_progress().set_total(len(content))
 
     for retry in range(get_setting().llm_retry_times):
         try:
-            if progress_bar is not None:
-                progress_bar.reset()
+            current_progress().reset()
             chunks = []
             async for chunk in _send_llm_request(
                 action="Understand the story and provide context note that can help you translate the text consistently in the future.",
-                content="Subtitle in source language:\n"
-                + "\n".join([dialogue.content for dialogue in original]),
+                content=content,
                 instructions=messages,
                 json_schema=PreTranslatedContextSetResponseDTO,
             ):
                 chunks.append(chunk)
-                if progress_bar is not None:
-                    progress_bar.update(len(chunk))
+                current_progress().update(len(chunk))
             result = "".join(chunks)
             if not result:
                 raise ValueError("Empty response from LLM")
             contexts = parse_json(PreTranslatedContextSetDTO, result).to_contexts()
+            current_progress().finish()
             break  # Exit the retry loop if successful
 
         except Exception as e:
@@ -296,7 +292,6 @@ async def refine_context(
     target_language: str,
     contexts: Iterable[PreTranslatedContext],
     metadata: Optional[MediaSetMetadata] = None,
-    progress_bar: Optional[tqdm] = None,
 ) -> list[PreTranslatedContext]:
     """
     Refine the context before dialogue translation.
@@ -320,14 +315,12 @@ Important instructions:
 
     json_content = dump_json(PreTranslatedContextSetDTO.from_contexts(contexts))
 
-    if progress_bar is not None:
-        progress_bar.total = len(json_content)
+    current_progress().set_total(len(json_content))
 
     refined_contexts = []
     for retry in range(get_setting().llm_retry_times):
         chunks = []
-        if progress_bar is not None:
-            progress_bar.reset()
+        progress_bar = current_progress()
         try:
             async for chunk in _send_llm_request(
                 action=f"Provide refined context note (from source language to {target_language}) that can help me translate the text consistently in the future.",
@@ -336,8 +329,7 @@ Important instructions:
                 json_schema=PreTranslatedContextSetResponseDTO,
             ):
                 chunks.append(chunk)
-                if progress_bar is not None:
-                    progress_bar.update(len(chunk))
+                progress_bar.update(len(chunk))
 
             result = "".join(chunks)
             if not result:

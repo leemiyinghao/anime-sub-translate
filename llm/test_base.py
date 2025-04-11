@@ -235,43 +235,6 @@ class TestLLM(unittest.TestCase):
         )
 
     @patch("llm.base._send_llm_request")
-    def test_translate_context_with_progress_bar(self, mock_send_llm_request):
-        # Setup mock response
-        async def mock_generator(*args, **kwargs):
-            response = json.dumps(
-                {"context": [{"original": "John", "translated": "John"}]}
-            )
-            for char in response:
-                yield char
-
-        # Reset the mock to avoid side effects from other tests
-        mock_send_llm_request.reset_mock()
-        mock_send_llm_request.side_effect = mock_generator
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello John", actor=None, style=None)
-        ]
-
-        # Mock progress bar - use MagicMock instead of AsyncMock for update
-        from unittest.mock import MagicMock
-
-        mock_progress_bar = MagicMock()
-        mock_progress_bar.update = MagicMock()
-
-        # Run the test
-        _ = asyncio.run(
-            translate_context(
-                original=original_dialogues,
-                target_language="Spanish",
-                progress_bar=mock_progress_bar,
-            )
-        )
-
-        # Verify progress bar was updated
-        self.assertTrue(mock_progress_bar.update.called)
-
-    @patch("llm.base._send_llm_request")
     def test_translate_context_retry_on_error(self, mock_send_llm_request):
         # Setup mock responses for first and second calls
         call_count = 0
@@ -408,41 +371,6 @@ class TestLLM(unittest.TestCase):
         _, kwargs = mock_send_llm_request.call_args
         pretranslate_arg: PreTranslatedContextSetDTO = kwargs["pretranslate"]
         self.assertEqual(pretranslate_arg.to_contexts(), pretranslate_context)
-
-    @patch("llm.base._send_llm_request")
-    def test_translate_dialouges_with_progress_bar(self, mock_send_llm_request):
-        # Setup mock response
-        async def mock_generator(*args, **kwargs):
-            response = json.dumps({"translated": {"1": "Hola"}})
-            for char in response:
-                yield char
-
-        mock_send_llm_request.return_value = mock_generator()
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None)
-        ]
-
-        # Mock progress bar - use MagicMock instead of AsyncMock for update
-        from unittest.mock import MagicMock
-
-        mock_progress_bar = MagicMock()
-        mock_progress_bar.update = MagicMock()
-
-        # Run the test
-        _ = list(
-            asyncio.run(
-                translate_dialogues(
-                    original=original_dialogues,
-                    target_language="Spanish",
-                    progress_bar=mock_progress_bar,
-                )
-            )
-        )
-
-        # Verify progress bar was updated
-        self.assertTrue(mock_progress_bar.update.called)
 
     @patch("llm.base._send_llm_request")
     def test_translate_dialouges_retry_on_error(self, mock_send_llm_request):
