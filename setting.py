@@ -1,8 +1,10 @@
 from contextvars import ContextVar
-from typing import Optional
+from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from logger import LOG_LEVEL
 
 
 class _Setting(BaseSettings):
@@ -28,8 +30,15 @@ class _Setting(BaseSettings):
     concurrency: int = 16
 
     # application setting
-    verbose: bool = False
+    log_level: LOG_LEVEL = "info"
     anilist_token: Optional[str] = None
+
+    @property
+    def debug(self) -> bool:
+        """
+        Debug mode.
+        """
+        return self.log_level == "debug"
 
 
 def load_setting_with_env_file(env_file: str) -> _Setting:

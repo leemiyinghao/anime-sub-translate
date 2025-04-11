@@ -1,13 +1,11 @@
 import argparse
-import logging
+
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from cost import CostTracker
-from setting import load_setting_with_env_file
+from logger import logger, set_log_level
+from setting import get_setting, load_setting_with_env_file
 from translate import translate
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -20,13 +18,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
     load_setting_with_env_file(".env")
 
-    translate(args.path, args.target_language)
+    set_log_level(get_setting().log_level)
+
+    with logging_redirect_tqdm(loggers=[logger]):
+        logger.info("Starting translation...")
+        logger.info(f"Target language: {args.target_language}")
+        logger.info(f"Subtitle path: {args.path}")
+        logger.info(f"Using model: {get_setting().llm_model}")
+
+        translate(args.path, args.target_language)
 
     logger.info("Translation completed.")
     logger.info(f"Estimated cost: {CostTracker().get_cost():.5f} USD")

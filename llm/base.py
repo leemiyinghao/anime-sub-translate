@@ -1,10 +1,9 @@
 import asyncio
-import logging
 from typing import AsyncGenerator, Iterable, Optional, Type
 
 from cost import CostTracker
+from logger import logger
 from production_litellm import completion_cost, litellm
-from pydantic import BaseModel, ValidationError
 from setting import get_setting
 from subtitle_types import (
     CharacterInfo,
@@ -23,8 +22,6 @@ from .dto import (
     dump_json,
     parse_json,
 )
-
-_logger = logging.getLogger(__name__)
 
 litellm.enable_json_schema_validation = True
 litellm.enable_cache = True
@@ -143,7 +140,7 @@ def _simple_sanity_check(
     if original_ids != translated_ids:
         missing_ids = original_ids - translated_ids
         extra_ids = translated_ids - original_ids
-        _logger.error(f"ID mismatch: missing: {missing_ids}, extra: {extra_ids}")
+        logger.warning(f"ID mismatch: missing: {missing_ids}, extra: {extra_ids}")
         return False
     return True
 
@@ -215,15 +212,12 @@ Important instructions:
             break
 
         except Exception as e:
-            if isinstance(e, ValidationError):
-                _logger.error(f"{e.error_count()} validation errors")
-            else:
-                _logger.error(f"Translation error: {e}")
+            logger.warning(f"Translation error: {e}")
             if retried < get_setting().llm_retry_times - 1:
                 after = get_setting().llm_retry_delay * (
                     get_setting().llm_retry_backoff ** retried
                 )
-                _logger.info(f"Retrying after {after} seconds...")
+                logger.warning(f"Retrying after {after} seconds...")
                 await asyncio.sleep(after)
                 continue
             raise FailedAfterRetries() from e
@@ -285,15 +279,12 @@ Important instructions:
             break  # Exit the retry loop if successful
 
         except Exception as e:
-            if isinstance(e, ValidationError):
-                _logger.error(f"{e.error_count()} validation errors")
-            else:
-                _logger.error(f"Translation error: {e}")
+            logger.warning(f"Translation error: {e}")
             if retry < get_setting().llm_retry_times - 1:
                 after = get_setting().llm_retry_delay * (
                     get_setting().llm_retry_backoff ** retry
                 )
-                _logger.info(f"Retrying after {after} seconds...")
+                logger.warning(f"Retrying after {after} seconds...")
                 await asyncio.sleep(after)
                 continue
             raise FailedAfterRetries() from e
@@ -354,17 +345,15 @@ Important instructions:
             refined_contexts = parse_json(
                 PreTranslatedContextSetDTO, result
             ).to_contexts()
+            current_progress().finish()
             break
         except Exception as e:
-            if isinstance(e, ValidationError):
-                _logger.error(f"{e.error_count()} validation errors")
-            else:
-                _logger.error(f"Translation error: {e}")
+            logger.warning(f"Translation error: {e}")
             if retry < get_setting().llm_retry_times - 1:
                 after = get_setting().llm_retry_delay * (
                     get_setting().llm_retry_backoff ** retry
                 )
-                _logger.info(f"Retrying after {after} seconds...")
+                logger.warning(f"Retrying after {after} seconds...")
                 await asyncio.sleep(after)
                 continue
             raise FailedAfterRetries() from e

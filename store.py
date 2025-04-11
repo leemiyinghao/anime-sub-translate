@@ -1,12 +1,10 @@
-import logging
 import os
 from typing import List, Optional
 
 from pydantic import BaseModel
 
+from logger import logger
 from subtitle_types import CharacterInfo, MediaSetMetadata, PreTranslatedContext
-
-logger = logging.getLogger(__name__)
 
 
 class PreTranslatedContextDTO(PreTranslatedContext):
@@ -66,7 +64,7 @@ class Store(BaseModel):
             with open(store_path, "r", encoding="utf-8") as file:
                 stored = Store.model_validate_json(file.read())
         except Exception as e:
-            logger.warning(f"Error loading pre-translate store: {e}")
+            logger.debug(f"Error loading pre-translate store: {e}")
 
         return stored
 
@@ -77,7 +75,8 @@ class Store(BaseModel):
             with open(store_path, "w", encoding="utf-8") as file:
                 file.write(self.model_dump_json())
         except Exception as e:
-            logger.warning(f"Error saving pre-translate store: {e}")
+            logger.error(f"Error saving pre-translate store: {e}")
+            raise
 
 
 def _find_pre_translate_store(path: str) -> str:

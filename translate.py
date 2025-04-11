@@ -12,6 +12,7 @@ from anilist import search_mediaset_metadata
 from format import parse_subtitle_file
 from format.format import SubtitleFormat
 from llm import refine_context, translate_context, translate_dialogues
+from logger import logger
 from setting import get_setting
 from store import (
     load_media_set_metadata,
@@ -26,8 +27,6 @@ from utils import (
     read_subtitle_file,
 )
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def get_language_postfix(target_language: str) -> str:
@@ -63,7 +62,7 @@ def write_translated_subtitle(translated_content: str, output_path: str) -> None
         with open(output_path, "w", encoding="utf-8") as file:
             file.write(translated_content.strip() + "\n")
     except Exception as e:
-        logging.error(f"Error writing translated subtitle to {output_path}: {e}")
+        logger.error(f"Error writing translated subtitle to {output_path}: {e}")
 
 
 async def translate_file(
@@ -112,7 +111,7 @@ async def translate_file(
         translated_chunk_group: list[list[SubtitleDialogue]] = await asyncio.gather(
             *tasks
         )
-        if get_setting().verbose:
+        if get_setting().debug:
             logger.info("Translated chunk:")
             for idx, dialogue in enumerate(
                 [dialogue for _chunk in translated_chunk_group for dialogue in _chunk]
@@ -177,10 +176,10 @@ async def prepare_context(
                 if context.original != context.translated
             }.items()
         ]
-        if get_setting().verbose:
-            logger.info("Update context:")
+        if get_setting().debug:
+            logger.debug("Update context:")
             for idx, context in enumerate(pre_translated_context):
-                logger.info(
+                logger.debug(
                     f"  {idx}: {context.original} -> {context.translated} ({context.description})"
                 )
         progress_bar.close()

@@ -1,6 +1,7 @@
 import re
 from typing import Iterable, Mapping
 
+from logger import logger
 from pysubs2 import SSAFile
 from subtitle_types import SubtitleDialogue
 
@@ -147,6 +148,7 @@ def _update_substring(old: str, new: Iterable[tuple[int, str]]) -> str:
     sections = [c for c, _ in _split_by_formatting(old)]
     for idx, replacement in new:
         if idx >= len(sections) or idx < 0:
+            logger.exception(f"Index out of range: {idx}/{len(sections)}, {sections}")
             raise IndexError("Index out of range")
         sections[idx] = replacement
 
