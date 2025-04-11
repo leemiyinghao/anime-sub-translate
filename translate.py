@@ -175,7 +175,7 @@ async def prepare_context(
                 context.original: context
                 for context in pre_translated_context
                 + new_context  # new_context may overwrite pre_translated_context
-                if context.original is not context.translated
+                if context.original != context.translated
             }.items()
         ]
         if get_setting().verbose:
