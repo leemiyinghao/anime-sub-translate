@@ -1,4 +1,5 @@
 import re
+from collections import OrderedDict
 from typing import Iterable, Mapping
 
 from logger import logger
@@ -6,6 +7,10 @@ from pysubs2 import SSAFile
 from subtitle_types import SubtitleDialogue
 
 from .format import SubtitleFormat
+
+Section = tuple[int, int, str]
+IdPair = tuple[int, int]
+ComplexSection = tuple[list[IdPair], str]
 
 
 class SubtitleFormatSSA(SubtitleFormat):
@@ -44,19 +49,30 @@ class SubtitleFormatSSA(SubtitleFormat):
             lambda x: x[1].type == "Dialogue",
             sorted(enumerate(self._raw_format), key=lambda x: x[1].start),
         )
+        sections: list[Section] = []
         for idx, subtitle in sorted_subtitles:
-            sections = _split_by_formatting(subtitle.text)
-            for sidx, (text, is_formatting) in enumerate(sections):
-                text = text.replace(r"\\N", "\n")
-                if is_formatting or len(text.strip()) == 0:
-                    # Skip formatting sections
-                    continue
-                yield SubtitleDialogue(
-                    id=_serialize_id(idx, sidx),
-                    content=text,
-                    actor=subtitle.name or None,
-                    style=subtitle.style or None,
-                )
+            # Split the subtitle text by formatting
+            sections.extend(
+                [
+                    (idx, sidx, text)
+                    for sidx, (text, is_formatting) in enumerate(
+                        _split_by_formatting(subtitle.text)
+                    )
+                    if not is_formatting
+                ]
+            )
+        # Deduplicate the dialogues
+        deduplicated_sections = _backward_dedpulicate(sections, range=16)
+
+        for id_pairs, text in deduplicated_sections:
+            # Create a new SubtitleDialogue object for each deduplicated section
+            text = re.sub(r"\\+N", "\n", text)
+            yield SubtitleDialogue(
+                id=_serialize_id(id_pairs),
+                content=text,
+                actor=self._raw_format[id_pairs[0][0]].name or None,
+                style=self._raw_format[id_pairs[0][0]].style or None,
+            )
 
     def update(self, subtitle_dialogues: Iterable[SubtitleDialogue]) -> None:
         """
@@ -65,21 +81,18 @@ class SubtitleFormatSSA(SubtitleFormat):
         """
         for new_subtitle in subtitle_dialogues:
             # Update the content of the subtitle
-            _id, _sid = (None, None)
-            try:
-                _id, _sid = _deserialize_id(new_subtitle.id)
-            except ValueError as e:
-                raise IndexError("Invalid subtitle ID format") from e
-            if _id >= len(self._raw_format) or _id < 0:
-                raise IndexError("Subtitle ID out of range")
-            # Replace new lines with \N in the SSA format
-            self._raw_format[_id].text = re.sub(
-                r"\n",
-                r"\\N",
-                _update_substring(
-                    self._raw_format[_id].text, [(_sid, new_subtitle.content)]
-                ),
-            )
+            _id_pairs = _deserialize_id(new_subtitle.id)
+            for _id, _sid in _id_pairs:
+                if _id >= len(self._raw_format) or _id < 0:
+                    raise IndexError("Subtitle ID out of range")
+                # Replace new lines with \N in the SSA format
+                self._raw_format[_id].text = re.sub(
+                    r"\n",
+                    r"\\N",
+                    _update_substring(
+                        self._raw_format[_id].text, [(_sid, new_subtitle.content)]
+                    ),
+                )
 
     def update_title(self, title: str) -> None:
         """
@@ -96,13 +109,30 @@ class SubtitleFormatSSA(SubtitleFormat):
         return self._raw_format.to_string("ass", encoding="utf-8")
 
 
-def _serialize_id(id: int, sid: int) -> str:
-    return f"{id}.{sid}"
+def _serialize_id(id_pairs: Iterable[IdPair]) -> str:
+    """
+    Serializes the ID pairs into a string format.
+    :param id_pairs: The ID pairs to be serialized.
+    :return: The serialized ID string.
+    """
+    return "_".join([f"{_id}.{_sid}" for _id, _sid in id_pairs])
 
 
-def _deserialize_id(id: str) -> tuple[int, int]:
-    _id, _sid = id.split(".")
-    return int(_id), int(_sid)
+def _deserialize_id(id: str) -> list[IdPair]:
+    """
+    Deserializes the ID string into a list of ID pairs.
+    :param id: The ID string to be deserialized.
+    :return: The list of ID pairs.
+    """
+    result = []
+    for pair in id.split("_"):
+        try:
+            _id, _sid = pair.split(".")
+            result.append((int(_id), int(_sid)))
+        except ValueError as e:
+            raise IndexError(f"Invalid ID format: {pair}") from e
+
+    return result
 
 
 def _split_by_formatting(content: str) -> list[tuple[str, bool]]:
@@ -153,3 +183,37 @@ def _update_substring(old: str, new: Iterable[tuple[int, str]]) -> str:
         sections[idx] = replacement
 
     return "".join(sections)
+
+
+def _backward_dedpulicate(
+    sections: Iterable[Section], range: int = 16, max_stack: int = 16
+) -> list[ComplexSection]:
+    """
+    Deduplicates the dialogues by removing any duplicate content within a specified range.
+        :param sections: The sections to be deduplicated.
+        :param range: The range within which to check for duplicates.
+        :param max_stack: The maximum stack size for the deduplication.
+        :return: A list of deduplicated sections, each containing a list of tuples ([(id, sid),...], text).
+    """
+    deduplicated: list[ComplexSection] = []
+    recent: OrderedDict[str, list[tuple[int, int]]] = OrderedDict()
+    for idx, sid, text in sections:
+        if text in recent:
+            _recent = recent[text]
+            if len(_recent) >= max_stack:
+                deduplicated.append((_recent, text))
+                _recent = []
+            _recent.append((idx, sid))
+            recent[text] = _recent
+        else:
+            recent[text] = [(idx, sid)]
+        if len(recent) > range:
+            # Remove the oldest entry and push it to the deduplicated list
+            (k, v) = recent.popitem(last=False)
+            deduplicated.append((v, k))
+
+    # Add the remaining entries to the deduplicated list
+    for k, v in recent.items():
+        deduplicated.append((v, k))
+
+    return deduplicated

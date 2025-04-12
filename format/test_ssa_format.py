@@ -1,11 +1,12 @@
 import os
 import tempfile
 import unittest
+from ast import Index
 
 from parameterized import parameterized
 from subtitle_types import SubtitleDialogue
 
-from format.ssa_format import SubtitleFormatSSA
+from format.ssa_format import SubtitleFormatSSA, _deserialize_id, _serialize_id
 
 
 class TestSubtitleFormatSSA(unittest.TestCase):
@@ -91,7 +92,7 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
                 style="Default",
             ),
             SubtitleDialogue(
-                id="3.0", content="Line with \\Nnewline character.", style="Default"
+                id="3.0", content="Line with \nnewline character.", style="Default"
             ),
         ]
 
@@ -112,7 +113,7 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
             SubtitleDialogue(id="2.3", content="SUBTITLE", style="Default"),
             SubtitleDialogue(id="2.5", content=" with formatting.", style="Default"),
             SubtitleDialogue(
-                id="3.0", content="Modified fourth \\Nsubtitle", style="Default"
+                id="3.0", content="Modified fourth \nsubtitle", style="Default"
             ),
         ]
 
@@ -246,6 +247,51 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         # Test with out of range index
         with self.assertRaises(IndexError):
             _update_substring("Hello world", [(5, "test")])
+
+    def test_id_roundtrip(self):
+        """Test the _serialize_id and _deserialize_id functions."""
+
+        # Test with valid ID
+        id_pairs = [(1, 2), (3, 4)]
+        serialized = _serialize_id(id_pairs)
+        deserialized = _deserialize_id(serialized)
+        self.assertEqual(id_pairs, deserialized)
+
+        # Test with empty ID
+        empty_id = ""
+        with self.assertRaises(IndexError):
+            _deserialize_id(empty_id)
+
+        # Test with invalid ID format
+        invalid_id = "invalid_format"
+        with self.assertRaises(IndexError):
+            _deserialize_id(invalid_id)
+
+    def test_backward_deduplicate(self):
+        """Test the _backward_dedpulicate function."""
+        from format.ssa_format import _backward_dedpulicate
+
+        # Test case 1: No duplicates
+        sections1 = [(0, 0, "a"), (1, 0, "b"), (2, 0, "c")]
+        result1 = _backward_dedpulicate(sections1)
+        self.assertEqual(result1, [([(0, 0)], "a"), ([(1, 0)], "b"), ([(2, 0)], "c")])
+
+        # Test case 2: Duplicates within range
+        sections2 = [(0, 0, "a"), (1, 0, "b"), (2, 0, "a")]
+        result2 = _backward_dedpulicate(sections2, range=5)
+        self.assertEqual(result2, [([(0, 0), (2, 0)], "a"), ([(1, 0)], "b")])
+
+        # Test case 3: Duplicates exceeding max_stack
+        sections3 = [(i, 0, "a") for i in range(19)]
+        result3 = _backward_dedpulicate(sections3, max_stack=5)
+        self.assertEqual(len(result3), 4)
+        self.assertEqual([len(r) for r, _ in result3], [5, 5, 5, 4])
+        self.assertEqual(result3[0][1], "a")
+
+        # Test case 4: Empty input
+        sections4 = []
+        result4 = _backward_dedpulicate(sections4)
+        self.assertEqual(result4, [])
 
 
 if __name__ == "__main__":
