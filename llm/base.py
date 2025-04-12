@@ -225,12 +225,10 @@ Important instructions:
                 current_progress().update(len(chunk))
             result = "".join(chunks)
             logger.debug(f"LLM translate response:\n{result}")
-            translated_dialogues = parse_json(
-                DialogueSetResponseDTO, result
-            ).to_subtitles()
-            if not _simple_sanity_check(original, translated_dialogues):
+            _translated = parse_json(DialogueSetResponseDTO, result).to_subtitles()
+            if not _simple_sanity_check(original, _translated):
                 raise ValueError("Translation failed sanity check.")
-            translated = translated_dialogues
+            translated = _translated
             current_progress().finish()
             break
 
