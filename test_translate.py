@@ -1,14 +1,22 @@
 import asyncio
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 from format.format import SubtitleFormat
 from subtitle_types import PreTranslatedContext, SubtitleDialogue
-from translate import prepare_context, translate_file
-from utils import dialogue_remap_id, dialogue_remap_id_reverse
+from translate import (
+    TaskParameter,
+    _prepare_context,
+    default_tasks,
+    task_prepare_context,
+    task_prepare_metadata,
+    task_translate_files,
+    translate,
+    translate_file,
+)
 
 
-class TestTranslateFile(unittest.TestCase):
+class TestTranslate(unittest.TestCase):
     def setUp(self):
         # Create a mock SubtitleFormat for testing
         self.mock_subtitle_format = MagicMock(spec=SubtitleFormat)
@@ -160,7 +168,7 @@ class TestTranslateFile(unittest.TestCase):
         mock_refine_context.return_value = context_result
 
         # Call the function being tested
-        result = await prepare_context(
+        result = await _prepare_context(
             [self.mock_subtitle_format, mock_subtitle_format2], "Spanish"
         )
 
@@ -242,7 +250,7 @@ class TestTranslateFile(unittest.TestCase):
         mock_refine_context.return_value = expected_result
 
         # Call the function being tested
-        result = await prepare_context(
+        result = await _prepare_context(
             [self.mock_subtitle_format, mock_subtitle_format2], "Spanish"
         )
 
@@ -275,15 +283,235 @@ class TestTranslateFile(unittest.TestCase):
         mock_refine_context.return_value = []
 
         # Call the function being tested with an empty list of subtitle formats
-        result = await prepare_context([], "Spanish")
+        result = await _prepare_context([], "Spanish")
 
         # Verify the function behaved as expected
         mock_chunk_dialogues.assert_called_once_with([], 500000)
         mock_translate_context.assert_not_called()
         mock_refine_context.assert_called_once()  # refine_context should be called even if empty
-
         # Check that the result is an empty list
         self.assertEqual(result, [])
+
+    @patch("translate.load_pre_translate_store")
+    @patch("translate._prepare_context")
+    @patch("translate.save_pre_translate_store")
+    async def test_task_prepare_context_no_existing_context(
+        self,
+        mock_save_pre_translate_store,
+        mock__prepare_context,
+        mock_load_pre_translate_store,
+    ):
+        # Mock the TaskParameter
+        mock_load_pre_translate_store.return_value = None
+        mock__prepare_context.return_value = self.pre_translated_context
+
+        # Create a mock SubtitleFormat for testing
+        self.mock_subtitle_format = MagicMock(spec=SubtitleFormat)
+
+        # Sample dialogues for testing
+        self.sample_dialogues = [
+            SubtitleDialogue(id="1", content="Hello", actor="John", style="Default"),
+            SubtitleDialogue(id="2", content="World", actor="Jane", style="Default"),
+            SubtitleDialogue(id="3", content="Test", actor="John", style="Default"),
+        ]
+
+        # Configure the mock to return our sample dialogues
+        self.mock_subtitle_format.dialogues.return_value = self.sample_dialogues
+
+        mock_task_parameter = MagicMock()
+        mock_task_parameter.base_path = "/path/to/subtitles"
+        mock_task_parameter.target_language = "Spanish"
+        mock_task_parameter.pre_translated_context = None
+        mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
+        mock_task_parameter.update.return_value = mock_task_parameter
+
+        # Mock read_subtitle_file to return a known content
+        with (
+            patch("translate.read_subtitle_file") as mock_read_subtitle_file,
+            patch("translate.find_files_from_path") as mock_find_files_from_path,
+        ):
+            mock_read_subtitle_file.return_value = self.mock_subtitle_format
+            mock_find_files_from_path.return_alue = ["/path/to/output.srt"]
+
+            result = await task_prepare_context(mock_task_parameter)
+
+        # Assertions
+        mock_load_pre_translate_store.assert_called_once_with("/path/to/subtitles")
+        mock__prepare_context.assert_called_once()
+        mock_save_pre_translate_store.assert_called_once_with(
+            "/path/to/subtitles", self.pre_translated_context
+        )
+        mock_task_parameter.update.assert_called_once_with(
+            pre_translated_context=self.pre_translated_context
+        )
+        self.assertEqual(result, mock_task_parameter)
+
+    @patch("translate.load_pre_translate_store")
+    @patch("translate._prepare_context")
+    @patch("translate.save_pre_translate_store")
+    async def test_task_prepare_context_existing_context(
+        self,
+        mock_save_pre_translate_store,
+        mock__prepare_context,
+        mock_load_pre_translate_store,
+    ):
+        # Mock the TaskParameter
+        mock_load_pre_translate_store.return_value = self.pre_translated_context
+
+        # Create a mock SubtitleFormat for testing
+        self.mock_subtitle_format = MagicMock(spec=SubtitleFormat)
+
+        # Sample dialogues for testing
+        self.sample_dialogues = [
+            SubtitleDialogue(id="1", content="Hello", actor="John", style="Default"),
+            SubtitleDialogue(id="2", content="World", actor="Jane", style="Default"),
+            SubtitleDialogue(id="3", content="Test", actor="John", style="Default"),
+        ]
+
+        # Configure the mock to return our sample dialogues
+        self.mock_subtitle_format.dialogues.return_value = self.sample_dialogues
+
+        mock_task_parameter = MagicMock()
+        mock_task_parameter.base_path = "/path/to/subtitles"
+        mock_task_parameter.target_language = "Spanish"
+        mock_task_parameter.pre_translated_context = None
+        mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
+        mock_task_parameter.update.return_value = mock_task_parameter
+
+        result = await task_prepare_context(mock_task_parameter)
+
+        # Assertions
+        mock_load_pre_translate_store.assert_called_once_with("/path/to/subtitles")
+        mock__prepare_context.assert_not_called()
+        mock_save_pre_translate_store.assert_not_called()
+        mock_task_parameter.update.assert_called_once_with(
+            pre_translated_context=self.pre_translated_context
+        )
+        self.assertEqual(result, mock_task_parameter)
+
+    @patch("translate.os.path.exists")
+    @patch("translate.write_translated_subtitle")
+    @patch("translate.get_output_path")
+    @patch("translate.parse_subtitle_file")
+    @patch("translate.translate_file")
+    async def test_task_translate_files(
+        self,
+        mock_translate_file,
+        mock_parse_subtitle_file,
+        mock_get_output_path,
+        mock_write_translated_subtitle,
+        mock_os_path_exists,
+    ):
+        # Mock the TaskParameter
+        mock_task_parameter = MagicMock()
+        mock_task_parameter.base_path = "/path/to/subtitles"
+        mock_task_parameter.target_language = "Spanish"
+        mock_task_parameter.pre_translated_context = self.pre_translated_context
+        mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
+
+        # Mock parse_subtitle_file to return a mock SubtitleFormat
+        mock_subtitle_format = MagicMock(spec=SubtitleFormat)
+        mock_parse_subtitle_file.return_value = mock_subtitle_format
+
+        # Mock translate_file to return the same mock SubtitleFormat
+        mock_translate_file.return_value = mock_subtitle_format
+
+        # Mock get_output_path to return a test output path
+        mock_get_output_path.return_value = "/path/to/output.srt"
+
+        # Mock os.path.exists to return False (file does not exist)
+        mock_os_path_exists.return_value = False
+
+        mock_task_parameter = MagicMock()
+        mock_task_parameter.base_path = "/path/to/subtitles"
+        mock_task_parameter.target_language = "Spanish"
+        mock_task_parameter.pre_translated_context = self.pre_translated_context
+        mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
+        mock_task_parameter.update.return_value = mock_task_parameter
+        result = await task_translate_files(mock_task_parameter)
+
+        # Assertions
+        mock_parse_subtitle_file.assert_called_once_with("/path/to/subtitle1.srt")
+        mock_translate_file.assert_called_once_with(
+            mock_subtitle_format,
+            mock_task_parameter.target_language,
+            mock_task_parameter.pre_translated_context,
+            metadata=mock_task_parameter.metadata,
+        )
+        mock_get_output_path.assert_called_once_with(
+            "/path/to/subtitle1.srt", "Spanish"
+        )
+        mock_write_translated_subtitle.assert_called_once()
+        self.assertEqual(result, mock_task_parameter)
+
+    @patch("translate.save_media_set_metadata")
+    @patch("translate.prepare_metadata")
+    @patch("translate.load_media_set_metadata")
+    async def test_task_prepare_metadata_no_existing_metadata(
+        self,
+        mock_load_media_set_metadata,
+        mock_prepare_metadata,
+        mock_save_media_set_metadata,
+    ):
+        # Mock the TaskParameter
+        mock_task_parameter = MagicMock()
+        mock_task_parameter.base_path = "/path/to/subtitles"
+
+        # Mock load_media_set_metadata to return None (no existing metadata)
+        mock_load_media_set_metadata.return_value = None
+
+        # Mock prepare_metadata to return a mock MediaSetMetadata
+        mock_metadata = MagicMock()
+        mock_prepare_metadata.return_value = mock_metadata
+
+        task_param = TaskParameter(
+            base_path="/path/to/subtitles", target_language="Spanish"
+        )
+        result = await task_prepare_metadata(task_param)
+
+        # Assertions
+        mock_load_media_set_metadata.assert_called_once_with("/path/to/subtitles")
+        mock_prepare_metadata.assert_called_once_with("/path/to/subtitles")
+        mock_save_media_set_metadata.assert_called_once_with(
+            "/path/to/subtitles", mock_metadata
+        )
+        self.assertEqual(result.metadata, mock_metadata)
+
+    @patch("translate.asyncio.run")
+    @patch("translate.Speedometer")
+    @patch("translate.tqdm")
+    @patch("translate.current_progress")
+    @patch("translate.os.path.isdir")
+    @patch("translate.TaskParameter")
+    def test_translate(
+        self,
+        mock_task_parameter,
+        mock_os_path_isdir,
+        mock_current_progress,
+        mock_tqdm,
+        mock_speedometer,
+        mock_asyncio_run,
+    ):
+        # Mock necessary objects and functions
+        mock_os_path_isdir.return_value = True
+        mock_task_parameter_instance = MagicMock()
+        mock_task_parameter.return_value = mock_task_parameter_instance
+        mock_speedometer_instance = MagicMock()
+        mock_speedometer.return_value = mock_speedometer_instance
+        mock_progress_instance = MagicMock()
+        mock_current_progress.return_value = mock_progress_instance
+
+        translate("/path/to/subtitles/", "Spanish", default_tasks)
+
+        # Assertions
+        mock_task_parameter.assert_called_once_with(
+            base_path="/path/to/subtitles/",
+            target_language="Spanish",
+            set_description=ANY,
+        )
+        expected_calls = [call(ANY) for _ in default_tasks]
+        mock_asyncio_run.assert_has_calls(expected_calls)
+        self.assertEqual(mock_asyncio_run.call_count, len(default_tasks))
 
 
 def run_async_test(coro):
@@ -298,21 +526,30 @@ def async_test(test_case):
     return wrapper
 
 
-# Apply the async_test decorator to the test methods
-TestTranslateFile.test_translate_file_basic = async_test(
-    TestTranslateFile.test_translate_file_basic
+TestTranslate.test_translate_file_basic = async_test(
+    TestTranslate.test_translate_file_basic
 )
-TestTranslateFile.test_translate_file_multiple_chunks = async_test(
-    TestTranslateFile.test_translate_file_multiple_chunks
+TestTranslate.test_translate_file_multiple_chunks = async_test(
+    TestTranslate.test_translate_file_multiple_chunks
 )
-
-# Apply the async_test decorator to the new test methods
-TestTranslateFile.test_translate_prepare_basic = async_test(
-    TestTranslateFile.test_translate_prepare_basic
+TestTranslate.test_translate_prepare_basic = async_test(
+    TestTranslate.test_translate_prepare_basic
 )
-TestTranslateFile.test_translate_prepare_multiple_chunks = async_test(
-    TestTranslateFile.test_translate_prepare_multiple_chunks
+TestTranslate.test_translate_prepare_multiple_chunks = async_test(
+    TestTranslate.test_translate_prepare_multiple_chunks
 )
-TestTranslateFile.test_translate_prepare_empty_input = async_test(
-    TestTranslateFile.test_translate_prepare_empty_input
+TestTranslate.test_translate_prepare_empty_input = async_test(
+    TestTranslate.test_translate_prepare_empty_input
+)
+TestTranslate.test_task_prepare_context_existing_context = async_test(
+    TestTranslate.test_task_prepare_context_existing_context
+)
+TestTranslate.test_task_prepare_context_no_existing_context = async_test(
+    TestTranslate.test_task_prepare_context_no_existing_context
+)
+TestTranslate.test_task_prepare_metadata_no_existing_metadata = async_test(
+    TestTranslate.test_task_prepare_metadata_no_existing_metadata
+)
+TestTranslate.test_task_translate_files = async_test(
+    TestTranslate.test_task_translate_files
 )

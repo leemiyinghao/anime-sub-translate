@@ -2,8 +2,11 @@ import asyncio
 import os
 import re
 from collections import OrderedDict
+from dataclasses import dataclass
+from functools import cached_property
+from genericpath import isdir
 from itertools import batched
-from typing import Callable, Iterable, Optional, TypeVar
+from typing import Awaitable, Callable, Dict, Iterable, Optional, TypeVar
 
 from tqdm.auto import tqdm
 
@@ -12,7 +15,7 @@ from format import parse_subtitle_file
 from format.format import SubtitleFormat
 from llm import refine_context, translate_context, translate_dialogues
 from logger import logger
-from progress import current_progress, progress
+from progress import current_progress
 from setting import get_setting
 from speedometer import Speedometer
 from store import (
@@ -72,7 +75,7 @@ def write_translated_subtitle(translated_content: str, output_path: str) -> None
 async def translate_file(
     subtitle_content: SubtitleFormat,
     target_language: str,
-    pre_translated_context: Iterable[PreTranslatedContext],
+    pre_translated_context: Optional[Iterable[PreTranslatedContext]] = None,
     metadata: Optional[MediaSetMetadata] = None,
 ) -> SubtitleFormat:
     """
@@ -126,10 +129,11 @@ async def translate_file(
     return subtitle_content
 
 
-async def prepare_context(
+async def _prepare_context(
     subtitle_contents: Iterable[SubtitleFormat],
     target_language: str,
     metadata: Optional[MediaSetMetadata] = None,
+    pre_translated_context: Optional[Iterable[PreTranslatedContext]] = None,
 ) -> list[PreTranslatedContext]:
     """
     Prepares the translation by translating the context.
@@ -160,7 +164,9 @@ async def prepare_context(
     ]  # add progress bar to each chunk
     refine_progress = current_progress().sub_progress()
 
-    pre_translated_context = []
+    _pre_translated_context: list[PreTranslatedContext] = list(
+        pre_translated_context or []
+    )
     concurrency = get_setting().concurrency  # Get concurrency setting
     per_response_limit = (
         int(get_setting().max_input_token / len(chunks))
@@ -181,46 +187,41 @@ async def prepare_context(
                     limit=per_response_limit,
                 )
             )
-        new_contexts: list[PreTranslatedContext] = await asyncio.gather(
-            *tasks
-        )  # Run translate_context concurrently
-        new_context = [
+        new_contexts = await asyncio.gather(*tasks)
+        new_context: list[PreTranslatedContext] = [
             context for context_list in new_contexts for context in context_list
-        ]  # Flatten the list of lists
+        ]
 
         # deduplicate context by original
-        pre_translated_context = [
-            context
-            for _, context in {
-                context.original: context
-                for context in pre_translated_context
-                + new_context  # new_context may overwrite pre_translated_context
-                if context.original != context.translated
-            }.items()
-        ]
+        dedup_map: Dict[str, PreTranslatedContext] = dict()
+        for context in _pre_translated_context + new_context:
+            dedup_map[context.original] = context
+
+        _pre_translated_context = list(dedup_map.values())
+
         if get_setting().debug:
             logger.debug("Update context:")
-            for idx, context in enumerate(pre_translated_context):
+            for idx, context in enumerate(_pre_translated_context):
                 logger.debug(
                     f"  {idx}: {context.original} -> {context.translated} ({context.description})"
                 )
 
     # refine context
-    pre_translated_context = await refine_progress.async_monitor(
+    _pre_translated_context = await refine_progress.async_monitor(
         refine_context,
-        contexts=pre_translated_context,
+        contexts=_pre_translated_context,
         target_language=target_language,
         metadata=metadata,
         limit=get_setting().pre_translate_size,
     )
-    pre_translated_context = [
+    _pre_translated_context = [
         context
         for _, context in {
-            context.original: context for context in pre_translated_context
+            context.original: context for context in _pre_translated_context
         }.items()
     ]
 
-    return pre_translated_context
+    return _pre_translated_context
 
 
 def prepare_metadata(
@@ -242,7 +243,154 @@ def prepare_metadata(
     return metadata
 
 
-def translate(path: str, target_language: str) -> None:
+@dataclass
+class TaskParameter:
+    base_path: str
+    target_language: str
+    metadata: Optional[MediaSetMetadata] = None
+    pre_translated_context: Optional[Iterable[PreTranslatedContext]] = None
+    set_description: Optional[Callable[[str], None]] = None
+
+    @cached_property
+    def subtitle_paths(self) -> list[str]:
+        """
+        Returns the list of subtitle paths in the base path.
+        """
+        return find_files_from_path(
+            self.base_path, get_language_postfix(self.target_language)
+        )
+
+    def update(self, **kwargs) -> "TaskParameter":
+        """
+        Return a new TaskParameter with updated values.
+        """
+        new_param = TaskParameter(**self.__dict__)
+        for key, value in kwargs.items():
+            setattr(new_param, key, value)
+        return new_param
+
+
+async def task_prepare_context(
+    param: TaskParameter,
+) -> TaskParameter:
+    """
+    Prepares the translation by translating the context.
+    """
+    pre_translated_context = param.pre_translated_context or []
+    param.set_description("Preparing context note") if param.set_description else None
+    if not pre_translated_context and (
+        stored := load_pre_translate_store(param.base_path)
+    ):
+        pre_translated_context = stored
+
+    if not pre_translated_context:
+        # read all files
+        subtitle_contents = []
+        for subtitle_path in param.subtitle_paths:
+            content = read_subtitle_file(subtitle_path)
+            subtitle_contents.append(content)
+
+        # pre-translate context
+        pre_translated_context = await _prepare_context(
+            subtitle_contents,
+            param.target_language,
+            metadata=param.metadata,
+            pre_translated_context=param.pre_translated_context,
+        )
+
+        # save pre-translate context
+        save_pre_translate_store(param.base_path, pre_translated_context)
+
+    # Print pre-translate context and metadata
+    logger.debug("Prepared context:")
+    for context in pre_translated_context:
+        logger.debug(
+            f"  {context.original} -> {context.translated} ({context.description})"
+        )
+
+    return param.update(pre_translated_context=pre_translated_context)
+
+
+async def task_translate_files(param: TaskParameter) -> TaskParameter:
+    """
+    Translates the subtitle files in the base path.
+    """
+    subtitle_paths = param.subtitle_paths
+
+    param.set_description("Parsing subtitle files") if param.set_description else None
+    subtitle_formats = [parse_subtitle_file(file) for file in subtitle_paths]
+    progs = [current_progress().sub_progress() for _ in range(len(subtitle_paths))]
+
+    # translate files
+    for subtitle_path, subtitle_format, prog in zip(
+        subtitle_paths, subtitle_formats, progs, strict=True
+    ):
+        param.set_description(
+            os.path.basename(subtitle_path)
+        ) if param.set_description else None
+
+        output_path = get_output_path(subtitle_path, param.target_language)
+        if os.path.exists(output_path):
+            logger.info(f"Output file {output_path} already exists, skipping.")
+            continue
+
+        try:
+            translated_content = await prog.async_monitor(
+                translate_file,
+                subtitle_format,
+                param.target_language,
+                param.pre_translated_context,
+                metadata=param.metadata,
+            )
+        except Exception as e:
+            logger.error(f"Error translating file {subtitle_path}: {e}, skipping.")
+            continue
+
+        translated_content.update_title(f"{param.target_language} (AI Translated)")
+        write_translated_subtitle(translated_content.as_str(), output_path)
+        logger.info(f"Translated content wrote: {os.path.basename(output_path)}")
+
+    return param
+
+
+async def task_prepare_metadata(param: TaskParameter) -> TaskParameter:
+    """
+    Prepares the metadata for the translation.
+    """
+    param.set_description("Preparing metadata") if param.set_description else None
+    metadata = None
+    if stored := load_media_set_metadata(param.base_path):
+        metadata = stored
+    else:
+        metadata = prepare_metadata(param.base_path)
+        if metadata:
+            save_media_set_metadata(param.base_path, metadata)
+
+    if metadata:
+        logger.info(
+            f"Anime recognized as: {metadata.title} ({','.join(metadata.title_alt)})"
+        )
+        logger.debug(f"  {metadata.description}")
+        logger.debug(f"  Characters:")
+        for character in metadata.characters:
+            logger.debug(
+                f"    {character.name}, {character.gender} ({','.join(character.name_alt)})"
+            )
+
+    return param.update(metadata=metadata)
+
+
+def translate(
+    path: str,
+    target_language: str,
+    tasks: tuple[
+        Callable[
+            [TaskParameter],
+            Awaitable[TaskParameter],
+        ],
+        ...,
+    ],
+) -> None:
     """
     Translates the subtitles in the given file to the target language.
         :param path: Path to the subtitle files. File can be .srt, .ssa, .ass.
@@ -258,104 +406,42 @@ def translate(path: str, target_language: str) -> None:
     current_progress().set_progress_bar(progress_bar=progress_bar)
     speedometer = Speedometer(progress_bar, unit="chars")
 
-    progress_bar.set_description(f"[{os.path.dirname(path)}]: Scanning files")
+    progs = [current_progress().sub_progress() for _ in range(len(tasks))]
 
-    subtitle_paths = find_files_from_path(path, get_language_postfix(target_language))
-    if not subtitle_paths:
-        logger.error(f"No subtitles found in {subtitle_paths}")
-        return
+    if os.path.isdir(path) and not path.endswith("/"):
+        path = f"{path}/"
 
-    prog_pre_translate = current_progress().sub_progress()
-    prog_subtitles = [
-        current_progress().sub_progress() for _ in range(len(subtitle_paths))
-    ]
+    dirname = os.path.basename(os.path.dirname(path))
 
-    # read all files
-    subtitle_contents = []
-    for subtitle_path in subtitle_paths:
-        content = read_subtitle_file(subtitle_path)
-        subtitle_contents.append(content)
-
-    subtitle_formats = [parse_subtitle_file(file) for file in subtitle_paths]
-
-    # mediaset metadata
-    progress_bar.set_description(f"[{os.path.basename(path)}]: Prepare metadata")
-    metadata = None
-    if stored := load_media_set_metadata(path):
-        metadata = stored
-    else:
-        metadata = prepare_metadata(path)
-        if metadata:
-            save_media_set_metadata(path, metadata)
-
-    if metadata:
-        # print metadata
-        logger.debug("Metadata:")
-        logger.debug(f"  Title: {metadata.title} ({','.join(metadata.title_alt)})")
-        logger.debug(f"  {metadata.description}")
-        logger.debug(f"  Characters:")
-        for character in metadata.characters:
-            logger.debug(
-                f"    {character.name}, {character.gender} ({','.join(character.name_alt)})"
-            )
-
-    # pre-translate context
-    progress_bar.set_description(
-        f"[{os.path.basename(os.path.dirname(path))}]: Pre-translate context"
+    task_param = TaskParameter(
+        base_path=path,
+        target_language=target_language,
+        set_description=lambda x: progress_bar.set_description(f"[{dirname}] {x}"),
     )
-    pre_translate_context = None
-    if stored := load_pre_translate_store(path):
-        pre_translate_context = stored
-    else:
-        with speedometer:
-            pre_translate_context = asyncio.run(
-                prog_pre_translate.async_monitor(
-                    prepare_context,
-                    subtitle_formats,
-                    target_language,
-                    metadata=metadata,
+
+    with speedometer:
+        for task, prog in zip(tasks, progs):
+            task_param = asyncio.run(
+                prog.async_monitor(
+                    task,
+                    task_param,
                 )
             )
-        save_pre_translate_store(path, pre_translate_context)
-    prog_pre_translate.finish()
-
-    # Print pre-translate context and metadata
-    logger.debug("pre-translate context:")
-    for context in pre_translate_context:
-        logger.debug(
-            f"  {context.original} -> {context.translated} ({context.description})"
-        )
-
-    for subtitle_path, subtitle_format, prog in zip(
-        subtitle_paths, subtitle_formats, prog_subtitles, strict=False
-    ):
-        progress_bar.set_description(
-            f"[{os.path.basename(os.path.dirname(path))}]: {os.path.basename(subtitle_path)}"
-        )
-        output_path = get_output_path(subtitle_path, target_language)
-        if os.path.exists(output_path):
-            logger.info(f"Output file {output_path} already exists. Skipping.")
             prog.finish()
-            continue
 
-        with progress(prog), speedometer:
-            try:
-                translated_content = asyncio.run(
-                    translate_file(
-                        subtitle_format,
-                        target_language,
-                        pre_translate_context,
-                        metadata=metadata,
-                    )
-                )
-            except Exception as e:
-                logger.error(f"Error translating file {subtitle_path}: {e}, skipping.")
-                continue
-
-        # replace Title line in support format like ASS/SSA
-        translated_content.update_title(f"{target_language} (AI Translated)")
-
-        write_translated_subtitle(translated_content.as_str(), output_path)
-        logger.info(f"Translated content wrote: {os.path.basename(output_path)}")
     current_progress().finish()
-    logger.info(f"All subtitles translated successfully ({len(subtitle_paths)} files)")
+
+
+default_tasks = (
+    task_prepare_metadata,
+    task_prepare_context,
+    task_translate_files,
+)
+
+__all__ = [
+    "translate",
+    "default_tasks",
+    "task_prepare_metadata",
+    "task_prepare_context",
+    "task_translate_files",
+]
