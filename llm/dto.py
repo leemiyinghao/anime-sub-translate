@@ -40,7 +40,7 @@ def dump_json(obj: object | BaseModel) -> str:
         result = ""
         if isinstance(obj, PromptedDTO):
             result += f"For the following JSON object, {obj.prompt()}\n"
-        result += f"`{obj.model_dump_json()}`"
+        result += f"`{obj.model_dump_json(exclude_none=True)}`"
         return result
 
     return json.dumps(obj, ensure_ascii=False)
@@ -53,9 +53,11 @@ def parse_json(model: Type[T], json_str: str) -> T:
     :param json_str: The JSON string to parse.
     :return: The parsed object.
     """
-    # remove code block wrapper
-    if json_str.startswith("```json") and json_str.endswith("```"):
-        json_str = json_str[7:-3].strip()
+    # remove code block wrapper or other useless prefix/suffix
+    if match := re.match(r"\{.*\}", json_str):
+        json_str = match.group(0)
+    else:
+        raise ValueError("Invalid JSON string")
     return model.model_validate_json(json_str)
 
 
@@ -125,7 +127,7 @@ class DialogueSetRequestDTO(BaseModel, PromptedDTO):
         """
         Returns the prompt for the DTO.
         """
-        return """each item in `subtitles` is a subtitle dialogue in format of `{"id": "{id}", "content": "{untranslated source content}","actor":"{character name about dialogue, optional},"style":"{style name of dialogue in subtitle, affect visual perception, optional}"}`"""
+        return """each item in `subtitles` is a subtitle dialogue in format of `{"id": "{id, return it directly}", "content": "{untranslated source content}","actor":"{character name about dialogue, optional, do not return},"style":"{visual style name of dialogue in subtitle, optional, do not return}"}`, order by the time of subtitle."""
 
 
 class DialogueSetResponseDTO(BaseModel, PromptedDTO):
@@ -146,7 +148,7 @@ class DialogueSetResponseDTO(BaseModel, PromptedDTO):
         """
         Returns the prompt for the DTO.
         """
-        return """Provide translated result in {"translated":{"{id}":"{translated_content}"}}, for example: `{"translated":{"1": "Hello", "2.0": "World"}}`. All ids from source must included. Only existed ids from source are allowed."""
+        return """Provide translated result in format of `{"translated":{"{id}":"{translated_content}"}}`. All ids from source must included. Only existed ids from source are allowed."""
 
 
 class PreTranslatedContextDTO(PreTranslatedContext):
@@ -207,4 +209,4 @@ class PreTranslatedContextSetResponseDTO(PreTranslatedContextSetDTO, PromptedDTO
         """
         Returns the prompt for the DTO.
         """
-        return """Provide translation context note as the follow example: `{"context":[{"original":"Hello","translated":"你好"},{"original":"Sekai","translated":"世界","description":"The same as world."}]}`, `original` is term in source language, `translated` is term in target language, description is optional."""
+        return """Provide improtant translation context note as format `{"context":[{"original":"{term in source language}","translated":"{translated term}","description":"{condiction to apply this translation, or basic information and persoality of a character. optional}"}]}`"""
