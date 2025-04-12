@@ -37,7 +37,12 @@ def dump_json(obj: object | BaseModel) -> str:
     :return: The JSON string.
     """
     if isinstance(obj, BaseModel):
-        return obj.model_dump_json()
+        result = ""
+        if isinstance(obj, PromptedDTO):
+            result += f"For the following JSON object, {obj.prompt()}\n"
+        result += f"`{obj.model_dump_json()}`"
+        return result
+
     return json.dumps(obj, ensure_ascii=False)
 
 
@@ -97,7 +102,7 @@ class SubtitleDialogueResponseDTO(BaseModel):
         )
 
 
-class DialogueSetRequestDTO(BaseModel):
+class DialogueSetRequestDTO(BaseModel, PromptedDTO):
     """
     Request DTO for dialogues translation.
     """
@@ -114,6 +119,13 @@ class DialogueSetRequestDTO(BaseModel):
         return cls(
             subtitles=[SubtitleDialogueRequestDTO.from_subtitle(i) for i in subtitles]
         )
+
+    @classmethod
+    def prompt(cls) -> str:
+        """
+        Returns the prompt for the DTO.
+        """
+        return """each item in `subtitles` is a subtitle dialogue in format of `{"id": "{id}", "content": "{untranslated source content}","actor":"{character name about dialogue, optional},"style":"{style name of dialogue in subtitle, affect visual perception, optional}"}`"""
 
 
 class DialogueSetResponseDTO(BaseModel, PromptedDTO):
@@ -134,7 +146,7 @@ class DialogueSetResponseDTO(BaseModel, PromptedDTO):
         """
         Returns the prompt for the DTO.
         """
-        return """Provide translated result in a dictionary contain sets of subtitles with their IDs as keys and translated content as values.\nExample: `{"translated":{"1": "Hello", "2.0": "World"}}`."""
+        return """Provide translated result in {"translated":{"{id}":"{translated_content}"}}, for example: `{"translated":{"1": "Hello", "2.0": "World"}}`. All ids from source must included. Only existed ids from source are allowed."""
 
 
 class PreTranslatedContextDTO(PreTranslatedContext):
@@ -156,7 +168,7 @@ class PreTranslatedContextDTO(PreTranslatedContext):
         return PreTranslatedContext(**self.model_dump())
 
 
-class PreTranslatedContextSetDTO(BaseModel):
+class PreTranslatedContextSetDTO(BaseModel, PromptedDTO):
     """
     DTO for context set.
     """
@@ -180,6 +192,13 @@ class PreTranslatedContextSetDTO(BaseModel):
         Converts a PreTranslatedContextSetDTO to a list of PreTranslatedContext.
         """
         return [i.to_context() for i in self.context]
+
+    @classmethod
+    def prompt(cls) -> str:
+        """
+        Returns the prompt for the DTO.
+        """
+        return """each item in `context` is a context note in format of `{"original":"{term in source language}","translated":"{translated term}","description":"{condiction to apply this translation, optional}"}`."""
 
 
 class PreTranslatedContextSetResponseDTO(PreTranslatedContextSetDTO, PromptedDTO):

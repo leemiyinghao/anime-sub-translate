@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import AsyncGenerator, Iterable, Optional, Type
 
 from cost import CostTracker
@@ -101,6 +102,10 @@ async def _send_llm_request(
         },
     ]
 
+    logger.debug(
+        f"LLM message({len(messages)}) using {len(json.dumps(messages, ensure_ascii=False))} chars."
+    )
+
     response = await litellm.acompletion(
         n=1,
         model=model,
@@ -164,7 +169,7 @@ async def translate_dialogues(
     system_message = f"""You are an experienced translator. Translating the text to {target_language}.
 Important instructions:
 1. Consider fluency, meaning, coherence, style, context, and character personality.
-2. Output dialogues in the same ID as the original content as possible.
+2. Output dialogues in the same ID as the original content as possible. Every dialogue must have a matched output.
 3. Missing or incorrect IDs are not acceptable. Do not create new ID.
 4. Do not keep the original text in translated result.
 5. Any extra comments or explanations in the result are not acceptable."""
@@ -188,8 +193,8 @@ Important instructions:
             current_progress().reset()
             chunks = []
             async for chunk in _send_llm_request(
-                action="Provide translated result.",
-                content=f"Subtitle in source language: {json_content}",
+                action="Provide translated result in {target_language}.",
+                content=f"# Subtitle in source language:\n{json_content}",
                 instructions=messages,
                 pretranslate=_pretranslate,
                 json_schema=DialogueSetResponseDTO,
@@ -197,7 +202,7 @@ Important instructions:
                 chunks.append(chunk)
                 current_progress().update(len(chunk))
             result = "".join(chunks)
-            logger.debug(f"LLM response:\n{result}")
+            logger.debug(f"LLM translate response:\n{result}")
             translated_dialogues = parse_json(
                 DialogueSetResponseDTO, result
             ).to_subtitles()
@@ -262,7 +267,7 @@ Important instructions:
             current_progress().reset()
             chunks = []
             async for chunk in _send_llm_request(
-                action="Understand the story and provide context note that can help you translate the text consistently in the future.",
+                action=f"Understand the story and provide context note that can help you translate the text to {target_language} consistently in the future.",
                 content=content,
                 instructions=messages,
                 json_schema=PreTranslatedContextSetResponseDTO,
@@ -270,6 +275,7 @@ Important instructions:
                 chunks.append(chunk)
                 current_progress().update(len(chunk))
             result = "".join(chunks)
+            logger.debug(f"LLM pre-translate context response:\n{result}")
             if not result:
                 raise ValueError("Empty response from LLM")
             contexts = parse_json(PreTranslatedContextSetDTO, result).to_contexts()
@@ -334,6 +340,7 @@ Important instructions:
                 progress_bar.update(len(chunk))
 
             result = "".join(chunks)
+            logger.debug(f"LLM refine context response:\n{result}")
             if not result:
                 raise ValueError("Empty response from LLM")
             refined_contexts = parse_json(
