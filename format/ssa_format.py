@@ -1,6 +1,6 @@
 import re
 from collections import OrderedDict
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Optional
 
 from logger import logger
 from pysubs2 import SSAFile
@@ -186,7 +186,7 @@ def _update_substring(old: str, new: Iterable[tuple[int, str]]) -> str:
 
 
 def _backward_dedpulicate(
-    sections: Iterable[Section], range: int = 16, max_stack: int = 16
+    sections: Iterable[Section], range: int = 16, max_stack: Optional[int] = None
 ) -> list[ComplexSection]:
     """
     Deduplicates the dialogues by removing any duplicate content within a specified range.
@@ -200,7 +200,7 @@ def _backward_dedpulicate(
     for idx, sid, text in sections:
         if text in recent:
             _recent = recent[text]
-            if len(_recent) >= max_stack:
+            if max_stack and len(_recent) >= max_stack:
                 deduplicated.append((_recent, text))
                 _recent = []
             _recent.append((idx, sid))
