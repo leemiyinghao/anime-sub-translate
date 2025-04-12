@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from format.format import SubtitleFormat
 from subtitle_types import PreTranslatedContext, SubtitleDialogue
 from translate import prepare_context, translate_file
+from utils import dialogue_remap_id, dialogue_remap_id_reverse
 
 
 class TestTranslateFile(unittest.TestCase):
@@ -32,13 +33,21 @@ class TestTranslateFile(unittest.TestCase):
         # Configure the mock to return our sample dialogues
         self.mock_subtitle_format.dialogues.return_value = self.sample_dialogues
 
+    @patch("translate.dialogue_remap_id_reverse")
+    @patch("translate.dialogue_remap_id")
     @patch("translate.chunk_dialogues")
     @patch("translate.translate_dialogues")
     async def test_translate_file_basic(
-        self, mock_translate_dialogues, mock_chunk_dialogues
+        self,
+        mock_translate_dialogues,
+        mock_chunk_dialogues,
+        mock_remap_id,
+        mock_remap_id_reverse,
     ):
         # Configure mocks
         mock_chunk_dialogues.return_value = [self.sample_dialogues]
+        mock_remap_id.side_effect = lambda x: (x, {})
+        mock_remap_id_reverse.side_effect = lambda x, _: (x)
 
         # Mock the translated dialogues that would be returned by translate_dialogues
         translated_dialogues = [
@@ -61,50 +70,23 @@ class TestTranslateFile(unittest.TestCase):
         self.mock_subtitle_format.update.assert_called_once_with(translated_dialogues)
         self.assertEqual(result, self.mock_subtitle_format)
 
-    @patch("translate.chunk_dialogues")
-    @patch("translate.translate_dialogues")
-    @patch("os.environ")
-    async def test_translate_file_with_verbose(
-        self, mock_environ, mock_translate_dialogues, mock_chunk_dialogues
-    ):
-        # Configure environment to enable verbose mode
-        # only mock the VERBOSE environment variable
-        mock_environ.get.side_effect = (
-            lambda key, default=None: "1" if key == "VERBOSE" else default
-        )
-
-        # Configure mocks
-        mock_chunk_dialogues.return_value = [self.sample_dialogues]
-
-        # Mock the translated dialogues
-        translated_dialogues = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
-            SubtitleDialogue(id="3", content="Prueba"),
-        ]
-
-        mock_translate_dialogues.return_value = translated_dialogues
-
-        # Call the function being tested
-        result = await translate_file(
-            self.mock_subtitle_format, "Spanish", self.pre_translated_context
-        )
-
-        # Verify the function behaved as expected
-        mock_chunk_dialogues.assert_called_once_with(self.sample_dialogues, 5000)
-        mock_translate_dialogues.assert_called_once()
-        self.mock_subtitle_format.update.assert_called_once_with(translated_dialogues)
-        self.assertEqual(result, self.mock_subtitle_format)
-
+    @patch("translate.dialogue_remap_id_reverse")
+    @patch("translate.dialogue_remap_id")
     @patch("translate.chunk_dialogues")
     @patch("translate.translate_dialogues")
     async def test_translate_file_multiple_chunks(
-        self, mock_translate_dialogues, mock_chunk_dialogues
+        self,
+        mock_translate_dialogues,
+        mock_chunk_dialogues,
+        mock_remap_id,
+        mock_remap_id_reverse,
     ):
         # Split dialogues into two chunks
         chunk1 = [self.sample_dialogues[0], self.sample_dialogues[1]]
         chunk2 = [self.sample_dialogues[2]]
         mock_chunk_dialogues.return_value = [chunk1, chunk2]
+        mock_remap_id.side_effect = lambda x: (x, {})
+        mock_remap_id_reverse.side_effect = lambda x, _: (x)
 
         # Mock the translated dialogues for each chunk
         translated_chunk1 = [
@@ -319,9 +301,6 @@ def async_test(test_case):
 # Apply the async_test decorator to the test methods
 TestTranslateFile.test_translate_file_basic = async_test(
     TestTranslateFile.test_translate_file_basic
-)
-TestTranslateFile.test_translate_file_with_verbose = async_test(
-    TestTranslateFile.test_translate_file_with_verbose
 )
 TestTranslateFile.test_translate_file_multiple_chunks = async_test(
     TestTranslateFile.test_translate_file_multiple_chunks

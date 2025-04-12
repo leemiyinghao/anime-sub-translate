@@ -24,6 +24,8 @@ from store import (
 from subtitle_types import MediaSetMetadata, PreTranslatedContext, SubtitleDialogue
 from utils import (
     chunk_dialogues,
+    dialogue_remap_id,
+    dialogue_remap_id_reverse,
     find_files_from_path,
     read_subtitle_file,
 )
@@ -86,6 +88,9 @@ async def translate_file(
     # will be similar to the input tokens.
     max_chunk_size = min(get_setting().max_output_token, get_setting().max_input_token)
     chunks = chunk_dialogues(subtitle_content.dialogues(), max_chunk_size)
+    # remap dialogues ids to reduce token usage
+    chunks, id_maps = tuple(zip(*[dialogue_remap_id(chunk) for chunk in chunks]))
+
     chunks = [(chunk, current_progress().sub_progress()) for chunk in chunks]
     concurrency = get_setting().concurrency
 
@@ -113,7 +118,9 @@ async def translate_file(
             ):
                 logger.info(f"  {idx}: {dialogue.content}")
         translated_dialogues.extend(translated_chunk_group)
-    for translated_chunk in translated_dialogues:
+    for translated_chunk, id_map in zip(translated_dialogues, id_maps):
+        # reverse remap dialogues ids
+        translated_chunk = dialogue_remap_id_reverse(translated_chunk, id_map)
         subtitle_content.update(translated_chunk)
 
     return subtitle_content

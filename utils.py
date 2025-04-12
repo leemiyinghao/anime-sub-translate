@@ -63,3 +63,47 @@ def chunk_dialogues(
         current_chunk_size += dialogue_size
 
     return chunks
+
+
+def dialogue_remap_id(
+    dialogues: Iterable[SubtitleDialogue],
+) -> tuple[list[SubtitleDialogue], dict[str, str]]:
+    """
+    Remaps the IDs of the dialogues to reduce token length.
+    :param dialogues: The list of dialogues to remap.
+    :return: A tuple containing the remapped dialogues and a dictionary of old to new ID mappings.
+    """
+    id_mapping = {}
+    remapped_dialogues = []
+    for idx, dialogue in enumerate(dialogues):
+        new_id = str(idx)
+        id_mapping[new_id] = dialogue.id
+        remapped_dialogues.append(
+            SubtitleDialogue(
+                id=new_id,
+                **dialogue.model_dump(exclude={"id"}),
+            )
+        )
+    return remapped_dialogues, id_mapping
+
+
+def dialogue_remap_id_reverse(
+    dialogues: Iterable[SubtitleDialogue],
+    id_mapping: dict[str, str],
+) -> list[SubtitleDialogue]:
+    """
+    Reverses the ID remapping for the dialogues.
+    :param dialogues: The list of dialogues to remap.
+    :param id_mapping: The dictionary of old to new ID mappings.
+    :return: The remapped dialogues.
+    """
+    remapped_dialogues = []
+    for dialogue in dialogues:
+        old_id = id_mapping.get(dialogue.id) or dialogue.id
+        remapped_dialogues.append(
+            SubtitleDialogue(
+                id=old_id,
+                **dialogue.model_dump(exclude={"id"}),
+            )
+        )
+    return remapped_dialogues

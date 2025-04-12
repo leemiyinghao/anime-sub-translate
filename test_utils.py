@@ -7,6 +7,7 @@ from utils import (
     chunk_dialogues,
     find_files_from_path,
     read_subtitle_file,
+    dialogue_remap_id, dialogue_remap_id_reverse,
 )
 
 
@@ -75,6 +76,33 @@ class TestUtils(unittest.TestCase):
         chunks = chunk_dialogues([])
         self.assertEqual(len(chunks), 1)
         self.assertEqual(len(chunks[0]), 0)
+
+
+    def test_dialogue_remap_id(self):
+        dialogues = [
+            SubtitleDialogue(id="123", content="Hello", actor="John", style="Default"),
+            SubtitleDialogue(id="456", content="World", actor="Jane", style="Default"),
+        ]
+
+        remapped_dialogues, id_mapping = dialogue_remap_id(dialogues)
+
+        self.assertEqual(len(remapped_dialogues), 2)
+        self.assertEqual(remapped_dialogues[0].id, "0")
+        self.assertEqual(remapped_dialogues[1].id, "1")
+        self.assertEqual(id_mapping, {"0": "123", "1": "456"})
+
+    def test_dialogue_remap_id_reverse(self):
+        dialogues = [
+            SubtitleDialogue(id="0", content="Hello", actor="John", style="Default"),
+            SubtitleDialogue(id="1", content="World", actor="Jane", style="Default"),
+        ]
+        id_mapping = {"0": "123", "1": "456"}
+
+        remapped_dialogues = dialogue_remap_id_reverse(dialogues, id_mapping)
+
+        self.assertEqual(len(remapped_dialogues), 2)
+        self.assertEqual(remapped_dialogues[0].id, "123")
+        self.assertEqual(remapped_dialogues[1].id, "456")
 
 
 if __name__ == "__main__":
