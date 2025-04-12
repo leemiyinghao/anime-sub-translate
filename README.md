@@ -22,6 +22,7 @@ cd anime-sub-translate
 uv pip install .
 ```
 
+
 ## Usage
 
 ```bash
@@ -38,7 +39,12 @@ python anime-sub-translate <target_language> <path_to_subtitle_file>
 python anime-sub-translate 繁體中文 subtitles/episode1.srt
 ```
 
-This will translate the `episode1.srt` subtitle file to Chinese (Traditional) and save the translated subtitle file as `episode1.繁體中文.srt`.
+This will:
+1. **Metadata Task**: Try to grab anime metadata like story intro, title and character names in different language.  These information will be stored at `subtitles/.translated/`
+2. **Pre-translate/Context note**: Make LLM to scan large chunks of subtitles (`episode1.srt`) to extract improtant information (context note) like the name of location, skill, school, activity, and determined a translation for them.  This will help the later translation being consistently.  Also stored at `subtitles/.translated/`.
+3. **Translate**: Actual translate the subtitle `episode1.srt` into Chinese (Traditional) and save the translated subtitle file as `episode1.繁體中文.srt`.
+
+More usage information, check `python anime-sub-translate -h`
 
 ## Configuration
 
@@ -49,6 +55,7 @@ The script uses environment variables for configuration:
 - `LANGUAGE_POSTFIX`: The postfix to use for the translated subtitle file (default: target language).
 - `MAX_INPUT_TOKEN`: Max input token limit of the language model.
 - `MAX_OUTPUT_TOKEN`: Max output token limit of the language model.
+- `PRE_TRANSLATE_SIZE`: Suggest LLM to have a sepecific output size on Pre-translate context note. It will be useful if large model can only scan context note for you.
 
 You can set these environment variables in a `.env` file in the project root directory. Example:
 
@@ -81,9 +88,13 @@ A little expensive than Gemini 2.0 Flash, having far less context window, and a 
 
 Not very recommended due to its significantly lower quality than Gemini 2.0 Flash. But it is a good choice if you are pretty sure that your subtitle are pretty simple and you want to save some money.
 
-#### Gemini 1.5 8B
+#### Gemma3
 
-Quality is significantly too low.
+12B version is sufficient for translation when `MAX_OUTPUT_SIZE=256` or lower (probably better than Gemini 2.0 Flash Lite). Will need some good GPU if you are running it locally. However, you will need other models to do the context note extraction for it due to the small translation window it requires.
+
+#### Gemini 1.5 Flash 8B
+
+Quality is significantly too low for actual translation, but it is not bad for context task, if you have other models to do the translation.
 
 #### GPT Series
 
