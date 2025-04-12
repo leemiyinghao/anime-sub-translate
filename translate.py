@@ -14,6 +14,7 @@ from llm import refine_context, translate_context, translate_dialogues
 from logger import logger
 from progress import current_progress, progress
 from setting import get_setting
+from speedometer import Speedometer
 from store import (
     load_media_set_metadata,
     load_pre_translate_store,
@@ -228,6 +229,7 @@ def translate(path: str, target_language: str) -> None:
         bar_format="{desc} |{bar}| {percentage:3.2f}% [{elapsed}/{remaining}{postfix}]",
     )
     current_progress().set_progress_bar(progress_bar=progress_bar)
+    speedometer = Speedometer(progress_bar, unit="chars")
 
     progress_bar.set_description(f"[{os.path.dirname(path)}]: Scanning files")
 
@@ -278,11 +280,15 @@ def translate(path: str, target_language: str) -> None:
     if stored := load_pre_translate_store(path):
         pre_translate_context = stored
     else:
-        pre_translate_context = asyncio.run(
-            prog_pre_translate.async_monitor(
-                prepare_context, subtitle_formats, target_language, metadata=metadata
+        with speedometer:
+            pre_translate_context = asyncio.run(
+                prog_pre_translate.async_monitor(
+                    prepare_context,
+                    subtitle_formats,
+                    target_language,
+                    metadata=metadata,
+                )
             )
-        )
         save_pre_translate_store(path, pre_translate_context)
     prog_pre_translate.finish()
 
@@ -305,7 +311,7 @@ def translate(path: str, target_language: str) -> None:
             prog.finish()
             continue
 
-        with progress(prog):
+        with progress(prog), speedometer:
             try:
                 translated_content = asyncio.run(
                     translate_file(
