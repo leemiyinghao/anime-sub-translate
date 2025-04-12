@@ -1,22 +1,25 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from subtitle_types import MediaSetMetadata
 
 from anilist.base import (
+    GET_MEDIA_BY_ID_QUERY,
     AniListCharacterConnectionDTO,
     AniListCharacterNameDTO,
     AniListCharacterNodeDTO,
     AniListCharacterPageInfoDTO,
     AniListMetadataDTO,
     AniListTitleDTO,
+    _load_all_characters,
+    _query_mediaset_metadata,
     _search_mediaset_metadata,
     get_mediaset_metadata_by_id,
     search_mediaset_metadata,
 )
 
 
-class TestAniListBase(unittest.TestCase):
+class TestAniListBase(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Sample data for testing
         self.sample_title_data = {
@@ -53,7 +56,7 @@ class TestAniListBase(unittest.TestCase):
             "characters": self.sample_character_connection_data,
         }
 
-    def test_search_mediaset_metadata(self):
+    async def test_search_mediaset_metadata(self):
         """Test the _search_mediaset_metadata function with mocked responses."""
         # Create a mock response for the first page
         first_page_response = AniListMetadataDTO(
@@ -84,13 +87,13 @@ class TestAniListBase(unittest.TestCase):
             patch("anilist.base._load_all_characters") as mock_load_characters,
         ):
             # Configure the mocks
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
             mock_query.return_value = first_page_response
             mock_load_characters.return_value = [additional_character]
 
             # Call the function
-            result = _search_mediaset_metadata("Attack on Titan")
+            result = await _search_mediaset_metadata("Attack on Titan")
 
             # Verify the function was called with correct parameters
             mock_get_client.assert_called_once()
@@ -118,19 +121,19 @@ class TestAniListBase(unittest.TestCase):
             self.assertIn("Mikasa Ackerman", result.characters[1].name_alt)
             self.assertEqual(result.characters[1].gender, "Female")
 
-    def test_search_mediaset_metadata_no_results(self):
+    async def test_search_mediaset_metadata_no_results(self):
         """Test the _search_mediaset_metadata function when no results are found."""
         with (
             patch("anilist.base._get_client") as mock_get_client,
             patch("anilist.base._query_mediaset_metadata") as mock_query,
         ):
             # Configure the mocks to return None (no results)
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
             mock_query.return_value = None
 
             # Call the function
-            result = _search_mediaset_metadata("Non-existent anime")
+            result = await _search_mediaset_metadata("Non-existent anime")
 
             # Verify the function was called with correct parameters
             mock_get_client.assert_called_once()
@@ -139,19 +142,19 @@ class TestAniListBase(unittest.TestCase):
             # Verify the result is None
             self.assertIsNone(result)
 
-    def test_search_mediaset_metadata_error_handling(self):
+    async def test_search_mediaset_metadata_error_handling(self):
         """Test the error handling in _search_mediaset_metadata."""
         with (
             patch("anilist.base._get_client") as mock_get_client,
             patch("anilist.base._query_mediaset_metadata") as mock_query,
         ):
             # Configure the mocks to raise an exception
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
             mock_query.side_effect = Exception("API error")
 
             # Call the function through the public wrapper to test error handling
-            result = search_mediaset_metadata("Attack on Titan")
+            result = await search_mediaset_metadata("Attack on Titan")
 
             # Verify the function was called
             mock_get_client.assert_called_once()
@@ -160,7 +163,7 @@ class TestAniListBase(unittest.TestCase):
             # Verify the result is None due to error handling
             self.assertIsNone(result)
 
-    def test_get_mediaset_metadata_by_id(self):
+    async def test_get_mediaset_metadata_by_id(self):
         """Test the _get_mediaset_metadata_by_id function with mocked responses."""
         # Create a mock response for the first page
         first_page_response = AniListMetadataDTO(
@@ -191,13 +194,13 @@ class TestAniListBase(unittest.TestCase):
             patch("anilist.base._load_all_characters") as mock_load_characters,
         ):
             # Configure the mocks
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
             mock_query.return_value = first_page_response
             mock_load_characters.return_value = [additional_character]
 
             # Call the function
-            result = get_mediaset_metadata_by_id(16498)
+            result = await get_mediaset_metadata_by_id(16498)
 
             # Verify the function was called with correct parameters
             mock_get_client.assert_called_once()
@@ -225,19 +228,19 @@ class TestAniListBase(unittest.TestCase):
             self.assertIn("Mikasa Ackerman", result.characters[1].name_alt)
             self.assertEqual(result.characters[1].gender, "Female")
 
-    def test_get_mediaset_metadata_by_id_no_results(self):
+    async def test_get_mediaset_metadata_by_id_no_results(self):
         """Test the _get_mediaset_metadata_by_id function when no results are found."""
         with (
             patch("anilist.base._get_client") as mock_get_client,
             patch("anilist.base._query_mediaset_metadata") as mock_query,
         ):
             # Configure the mocks to return None (no results)
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
             mock_query.return_value = None
 
             # Call the function
-            result = get_mediaset_metadata_by_id(999999)  # Non-existent ID
+            result = await get_mediaset_metadata_by_id(999999)  # Non-existent ID
 
             # Verify the function was called with correct parameters
             mock_get_client.assert_called_once()
@@ -246,19 +249,19 @@ class TestAniListBase(unittest.TestCase):
             # Verify the result is None
             self.assertIsNone(result)
 
-    def test_get_mediaset_metadata_by_id_error_handling(self):
+    async def test_get_mediaset_metadata_by_id_error_handling(self):
         """Test the error handling in _get_mediaset_metadata_by_id."""
         with (
             patch("anilist.base._get_client") as mock_get_client,
             patch("anilist.base._query_mediaset_metadata") as mock_query,
         ):
             # Configure the mocks to raise an exception
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
             mock_query.side_effect = Exception("API error")
 
             # Call the function through the public wrapper to test error handling
-            result = get_mediaset_metadata_by_id(16498)
+            result = await get_mediaset_metadata_by_id(16498)
 
             # Verify the function was called
             mock_get_client.assert_called_once()
@@ -267,9 +270,8 @@ class TestAniListBase(unittest.TestCase):
             # Verify the result is None due to error handling
             self.assertIsNone(result)
 
-    def test_load_all_characters(self):
+    async def test_load_all_characters(self):
         """Test the _load_all_characters function with mocked responses."""
-        from anilist.base import _load_all_characters
 
         # Create mock responses for multiple pages
         page1_character = AniListCharacterNodeDTO(
@@ -296,11 +298,11 @@ class TestAniListBase(unittest.TestCase):
             patch("anilist.base._query_mediaset_metadata") as mock_query,
         ):
             # Configure the mock to return different responses for different pages
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
             # Configure mock_query to return different responses based on the page number
-            def mock_query_side_effect(client, query, variables):
+            async def mock_query_side_effect(client, query, variables):
                 page = variables.get("charaPage", 0)
 
                 if page == 2:
@@ -328,7 +330,7 @@ class TestAniListBase(unittest.TestCase):
             mock_query.side_effect = mock_query_side_effect
 
             # Call the function
-            result = _load_all_characters(media_id=16498, start_from=1)
+            result = await _load_all_characters(media_id=16498, start_from=1)
 
             # Verify the function was called with correct parameters
             mock_get_client.assert_called_once()
@@ -363,9 +365,8 @@ class TestAniListBase(unittest.TestCase):
             self.assertIn("Armin Arlelt", result[1].name.alternative)
             self.assertEqual(result[1].gender, "Male")
 
-    def test_load_all_characters_empty_response(self):
+    async def test_load_all_characters_empty_response(self):
         """Test the _load_all_characters function when no characters are found."""
-        from anilist.base import _load_all_characters
 
         # Set up the mocks
         with (
@@ -373,12 +374,12 @@ class TestAniListBase(unittest.TestCase):
             patch("anilist.base._query_mediaset_metadata") as mock_query,
         ):
             # Configure the mock to return empty response
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
             mock_query.return_value = None
 
             # Call the function
-            result = _load_all_characters(media_id=999999, start_from=1)
+            result = await _load_all_characters(media_id=999999, start_from=1)
 
             # Verify the function was called with correct parameters
             mock_get_client.assert_called_once()
@@ -387,9 +388,8 @@ class TestAniListBase(unittest.TestCase):
             # Verify the result is an empty list
             self.assertEqual(result, [])
 
-    def test_load_all_characters_max_pages(self):
+    async def test_load_all_characters_max_pages(self):
         """Test the _load_all_characters function with maximum page limit."""
-        from anilist.base import _load_all_characters
 
         # Create a character for each page
         character_template = AniListCharacterNodeDTO(
@@ -405,10 +405,10 @@ class TestAniListBase(unittest.TestCase):
             patch("anilist.base._query_mediaset_metadata") as mock_query,
         ):
             # Configure the mock to always return a page with hasNextPage=True
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
-            def mock_query_side_effect(client, query, variables):
+            async def mock_query_side_effect(client, query, variables):
                 # Always return a response with hasNextPage=True to test the max page limit
                 return AniListMetadataDTO(
                     id=16498,
@@ -421,7 +421,7 @@ class TestAniListBase(unittest.TestCase):
             mock_query.side_effect = mock_query_side_effect
 
             # Call the function
-            result = _load_all_characters(media_id=16498, start_from=1)
+            result = await _load_all_characters(media_id=16498, start_from=1)
 
             # Verify the function was called with correct parameters
             mock_get_client.assert_called_once()
@@ -432,9 +432,8 @@ class TestAniListBase(unittest.TestCase):
             # Verify the result has 8 characters (one for each page)
             self.assertEqual(len(result), 8)
 
-    def test_query_mediaset_metadata(self):
+    async def test_query_mediaset_metadata(self):
         """Test the _query_mediaset_metadata function with mocked responses."""
-        from anilist.base import GET_MEDIA_BY_ID_QUERY, _query_mediaset_metadata
 
         # Set up the mocks
         with patch("anilist.base.get_setting") as mock_get_setting:
@@ -444,20 +443,22 @@ class TestAniListBase(unittest.TestCase):
             mock_get_setting.return_value = mock_setting
 
             # Create a mock client
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
 
             # Configure the mock client to return a valid response
-            mock_client.execute.return_value = {"Media": self.sample_metadata_data}
+            mock_client.execute_async.return_value = {
+                "Media": self.sample_metadata_data
+            }
 
             # Call the function
             variables = {"mediaId": 16498}
-            result = _query_mediaset_metadata(
+            result = await _query_mediaset_metadata(
                 client=mock_client, query=GET_MEDIA_BY_ID_QUERY, variables=variables
             )
 
             # Verify the client was called with correct parameters
-            mock_client.execute.assert_called_once()
-            call_args = mock_client.execute.call_args[1]
+            mock_client.execute_async.assert_called_once()
+            call_args = mock_client.execute_async.call_args[1]
             self.assertEqual(call_args["variable_values"], variables)
 
             # Verify the result
@@ -480,9 +481,8 @@ class TestAniListBase(unittest.TestCase):
             self.assertEqual(len(result.characters.nodes), 1)
             self.assertEqual(result.characters.nodes[0].name.full, "Eren Yeager")
 
-    def test_query_mediaset_metadata_empty_response(self):
+    async def test_query_mediaset_metadata_empty_response(self):
         """Test the _query_mediaset_metadata function with an empty response."""
-        from anilist.base import GET_MEDIA_BY_ID_QUERY, _query_mediaset_metadata
 
         # Set up the mocks
         with patch("anilist.base.get_setting") as mock_get_setting:
@@ -492,26 +492,25 @@ class TestAniListBase(unittest.TestCase):
             mock_get_setting.return_value = mock_setting
 
             # Create a mock client
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
 
             # Configure the mock client to return an empty response
-            mock_client.execute.return_value = {"Media": None}
+            mock_client.execute_async.return_value = {"Media": None}
 
             # Call the function
             variables = {"mediaId": 999999}  # Non-existent ID
-            result = _query_mediaset_metadata(
+            result = await _query_mediaset_metadata(
                 client=mock_client, query=GET_MEDIA_BY_ID_QUERY, variables=variables
             )
 
             # Verify the client was called
-            mock_client.execute.assert_called_once()
+            mock_client.execute_async.assert_called_once()
 
             # Verify the result is None
             self.assertIsNone(result)
 
-    def test_query_mediaset_metadata_invalid_response(self):
+    async def test_query_mediaset_metadata_invalid_response(self):
         """Test the _query_mediaset_metadata function with an invalid response."""
-        from anilist.base import GET_MEDIA_BY_ID_QUERY, _query_mediaset_metadata
 
         # Set up the mocks
         with patch("anilist.base.get_setting") as mock_get_setting:
@@ -521,10 +520,10 @@ class TestAniListBase(unittest.TestCase):
             mock_get_setting.return_value = mock_setting
 
             # Create a mock client
-            mock_client = MagicMock()
+            mock_client = AsyncMock()
 
             # Configure the mock client to return an invalid response
-            mock_client.execute.return_value = {
+            mock_client.execute_async.return_value = {
                 "Media": {
                     "id": 16498,
                     # Missing other required fields
@@ -533,12 +532,12 @@ class TestAniListBase(unittest.TestCase):
 
             # Call the function
             variables = {"mediaId": 16498}
-            result = _query_mediaset_metadata(
+            result = await _query_mediaset_metadata(
                 client=mock_client, query=GET_MEDIA_BY_ID_QUERY, variables=variables
             )
 
             # Verify the client was called
-            mock_client.execute.assert_called_once()
+            mock_client.execute_async.assert_called_once()
 
             # Verify the result has default values for missing fields
             self.assertIsNotNone(result)

@@ -154,7 +154,7 @@ def _get_client() -> Client:
     )
 
 
-def _search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
+async def _search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
     """
     Searches for media set metadata by title.
     :param title: The title of the media set.
@@ -165,7 +165,7 @@ def _search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
     variables = _create_search_variable(title)
 
     # First page
-    first_page_response = _query_mediaset_metadata(
+    first_page_response = await _query_mediaset_metadata(
         client=client,
         query=query,
         variables=variables,
@@ -181,27 +181,27 @@ def _search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
     )
 
     # Load all characters for the media set
-    other_characters = _load_all_characters(media_id=first_page_response.id)
+    other_characters = await _load_all_characters(media_id=first_page_response.id)
     # Append the characters to the first page response
     first_page_response.characters.nodes.extend(other_characters)
 
     return first_page_response.to_metadata()
 
 
-def search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
+async def search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
     try:
-        return _search_mediaset_metadata(title)
+        return await _search_mediaset_metadata(title)
     except Exception as e:
         print(f"Error searching media set metadata: {e}")
         return None
 
 
-def _get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
+async def _get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
     client = _get_client()
     query = GET_MEDIA_BY_ID_QUERY
     variables = _create_id_variable(id)
 
-    first_page_response = _query_mediaset_metadata(
+    first_page_response = await _query_mediaset_metadata(
         client=client,
         query=query,
         variables=variables,
@@ -216,20 +216,20 @@ def _get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
         first_page_response.safe_characters.safe_nodes
     )
 
-    other_characters = _load_all_characters(media_id=first_page_response.id)
+    other_characters = await _load_all_characters(media_id=first_page_response.id)
     first_page_response.characters.nodes.extend(other_characters)
     return first_page_response.to_metadata()
 
 
-def get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
+async def get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
     try:
-        return _get_mediaset_metadata_by_id(id)
+        return await _get_mediaset_metadata_by_id(id)
     except Exception as e:
         print(f"Error getting media set metadata by ID: {e}")
         return None
 
 
-def _load_all_characters(
+async def _load_all_characters(
     media_id: int, start_from: int = 1
 ) -> list[AniListCharacterNodeDTO]:
     """
@@ -247,7 +247,7 @@ def _load_all_characters(
     while has_next_page and current_page < 10:
         # Check if there are more pages of characters
         _variables = _create_id_variable(id=media_id, chara_page=current_page)
-        response = _query_mediaset_metadata(
+        response = await _query_mediaset_metadata(
             client=client,
             query=query,
             variables=_variables,
@@ -264,7 +264,7 @@ def _load_all_characters(
     return result
 
 
-def _query_mediaset_metadata(
+async def _query_mediaset_metadata(
     client: Client,
     query: DocumentNode,
     variables: dict,
@@ -276,7 +276,7 @@ def _query_mediaset_metadata(
     :param variables: The variables for the query.
     :return: The media set metadata.
     """
-    response = client.execute(query, variable_values=variables)
+    response = await client.execute_async(query, variable_values=variables)
     if not response["Media"]:
         return None
     return AniListMetadataDTO.model_validate(response["Media"])

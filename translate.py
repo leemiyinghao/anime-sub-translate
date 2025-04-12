@@ -224,7 +224,7 @@ async def _prepare_context(
     return _pre_translated_context
 
 
-def prepare_metadata(
+async def prepare_metadata(
     path: str,
 ) -> Optional[MediaSetMetadata]:
     # resolve leaf directory name from path
@@ -239,7 +239,7 @@ def prepare_metadata(
     ).strip()  # remove brackets and extra spaces
 
     # search for metadata
-    metadata = search_mediaset_metadata(title)
+    metadata = await search_mediaset_metadata(title)
     return metadata
 
 
@@ -362,7 +362,7 @@ async def task_prepare_metadata(param: TaskParameter) -> TaskParameter:
     if stored := load_media_set_metadata(param.base_path):
         metadata = stored
     else:
-        metadata = prepare_metadata(param.base_path)
+        metadata = await prepare_metadata(param.base_path)
         if metadata:
             save_media_set_metadata(param.base_path, metadata)
 
