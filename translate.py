@@ -154,14 +154,21 @@ async def prepare_context(
     refine_progress = current_progress().sub_progress()
 
     pre_translated_context = []
-    for idx, (dialogue_chunk, prog) in enumerate(chunks):
-        context = await prog.async_monitor(
-            translate_context,
-            original=dialogue_chunk,
-            target_language=target_language,
-            metadata=metadata,
-        )
-        new_context = list(context)
+    concurrency = get_setting().concurrency # Get concurrency setting
+    for chunk_group in batched(enumerate(chunks), concurrency): # Batch chunks by concurrency
+        tasks = []
+        for idx, (dialogue_chunk, prog) in chunk_group:
+            tasks.append(
+                prog.async_monitor(
+                    translate_context,
+                    original=dialogue_chunk,
+                    target_language=target_language,
+                    metadata=metadata,
+                )
+            )
+        new_contexts: list[PreTranslatedContext] = await asyncio.gather(*tasks) # Run translate_context concurrently
+        new_context = [context for context_list in new_contexts for context in context_list] # Flatten the list of lists
+
         # deduplicate context by original
         pre_translated_context = [
             context
