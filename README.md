@@ -53,7 +53,7 @@ The script uses environment variables for configuration:
 - `LLM_MODEL`: The language model to use for translation (default: `gpt-3.5-turbo`).
 - `LLM_EXTRA_PROMPT`: Extra prompt to pass to the language model.
 - `LANGUAGE_POSTFIX`: The postfix to use for the translated subtitle file (default: target language).
-- `MAX_INPUT_TOKEN`: Max input token limit of the language model.
+- `MAX_INPUT_TOKEN`: Max input token limit of the language model. Be aware to preserve some tokens for system prompt, context note, extra prompt, and JSON overhead (usually will need 4-5k characters).
 - `MAX_OUTPUT_TOKEN`: Max output token limit of the language model.
 - `PRE_TRANSLATE_SIZE`: Suggest LLM to have a sepecific output size on Pre-translate context note. It will be useful if large model can only scan context note for you.
 
