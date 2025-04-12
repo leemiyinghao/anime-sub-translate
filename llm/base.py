@@ -6,6 +6,7 @@ from logger import logger
 from production_litellm import completion_cost, litellm
 from progress import current_progress
 from setting import get_setting
+from speedometer import Speedometer
 from subtitle_types import (
     CharacterInfo,
     MediaSetMetadata,
@@ -112,6 +113,7 @@ async def _send_llm_request(
     async for part in response:  # type: ignore
         token = part.choices[0].delta.content or ""
         tokens.append(token)
+        Speedometer.increment(len(token))
         yield token
 
     try:
