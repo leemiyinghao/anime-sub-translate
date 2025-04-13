@@ -296,6 +296,9 @@ async def task_prepare_context(
             content = parse_subtitle_file(subtitle_path)
             subtitle_contents.append(content)
 
+        if not subtitle_contents:
+            logger.warning("No subtitle files found, skipping context preparation.")
+            return param
         # pre-translate context
         pre_translated_context = await _prepare_context(
             subtitle_contents,
