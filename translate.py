@@ -30,7 +30,6 @@ from utils import (
     dialogue_remap_id,
     dialogue_remap_id_reverse,
     find_files_from_path,
-    read_subtitle_file,
 )
 
 F = TypeVar("F", bound=Callable)
@@ -257,7 +256,9 @@ class TaskParameter:
         Returns the list of subtitle paths in the base path.
         """
         return find_files_from_path(
-            self.base_path, get_language_postfix(self.target_language)
+            self.base_path,
+            get_language_postfix(self.target_language),
+            match_postfix=get_setting().sub_postfix,
         )
 
     def update(self, **kwargs) -> "TaskParameter":
@@ -429,6 +430,9 @@ def translate(
         metadata=load_media_set_metadata(path),  # preload saved data
         pre_translated_context=load_pre_translate_store(path),  # preload saved data
     )
+
+    for sub in task_param.subtitle_paths:
+        logger.debug(f"Found subtitle file: {sub}")
 
     with speedometer:
         for task, prog in zip(tasks, progs):

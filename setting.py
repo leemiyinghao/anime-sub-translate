@@ -29,6 +29,7 @@ class _Setting(BaseSettings):
     language_postfix: Optional[str] = None
     concurrency: int = 16
     pre_translate_size: Optional[int] = None
+    sub_postfix: Optional[str] = None
 
     # application setting
     log_level: LOG_LEVEL = "info"
