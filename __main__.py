@@ -43,10 +43,10 @@ if __name__ == "__main__":
     tasks = default_tasks
     if args.context or args.metadata or args.translate:
         _tasks = []
-        if args.context:
-            _tasks.append(task_prepare_context)
         if args.metadata:
             _tasks.append(task_prepare_metadata)
+        if args.context:
+            _tasks.append(task_prepare_context)
         if args.translate:
             _tasks.append(task_translate_files)
         tasks = tuple(_tasks)
