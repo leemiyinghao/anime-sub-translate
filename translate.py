@@ -308,9 +308,9 @@ async def task_prepare_context(
         save_pre_translate_store(param.base_path, pre_translated_context)
 
     # Print pre-translate context and metadata
-    logger.debug("Prepared context:")
+    logger.info("Prepared context:")
     for context in pre_translated_context:
-        logger.debug(
+        logger.info(
             f"  {context.original} -> {context.translated} ({context.description})"
         )
 
@@ -423,6 +423,8 @@ def translate(
         base_path=path,
         target_language=target_language,
         set_description=lambda x: progress_bar.set_description(f"[{dirname}] {x}"),
+        metadata=load_media_set_metadata(path),  # preload saved data
+        pre_translated_context=load_pre_translate_store(path),  # preload saved data
     )
 
     with speedometer:
