@@ -1,12 +1,18 @@
 import os
 import tempfile
 import unittest
-from ast import Index
 
 from parameterized import parameterized
 from subtitle_types import SubtitleDialogue
 
-from format.ssa_format import SubtitleFormatSSA, _deserialize_id, _serialize_id
+from format.ssa_format import (
+    SubtitleFormatSSA,
+    _backward_dedpulicate,
+    _deserialize_id,
+    _serialize_id,
+    _split_by_formatting,
+    _update_substring,
+)
 
 
 class TestSubtitleFormatSSA(unittest.TestCase):
@@ -27,7 +33,7 @@ Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,Hello, world!
 Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,This is a second subtitle.
-Dialogue: 0,0:00:11.00,0:00:15.00,Default,,0,0,0,,{{\\pos(400,570)}}Third {\\i}subtitle{\\i} with formatting.
+Dialogue: 0,0:00:11.00,0:00:15.00,Default,,0,0,0,,{{\\pos(400,570)}}{comment}Third {\\i}subtitle{\\i} with formatting.
 Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character.
 """
         # Create temporary SSA and ASS files for testing
@@ -77,17 +83,17 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
                 id="1.0", content="This is a second subtitle.", style="Default"
             ),
             SubtitleDialogue(
-                id="2.1",
+                id="2.2",
                 content="Third ",
                 style="Default",
             ),
             SubtitleDialogue(
-                id="2.3",
+                id="2.4",
                 content="subtitle",
                 style="Default",
             ),
             SubtitleDialogue(
-                id="2.5",
+                id="2.6",
                 content=" with formatting.",
                 style="Default",
             ),
@@ -109,9 +115,9 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
             SubtitleDialogue(
                 id="1.0", content="Modified second subtitle", style="Default"
             ),
-            SubtitleDialogue(id="2.1", content="Modified ", style="Default"),
-            SubtitleDialogue(id="2.3", content="SUBTITLE", style="Default"),
-            SubtitleDialogue(id="2.5", content=" with formatting.", style="Default"),
+            SubtitleDialogue(id="2.2", content="Modified ", style="Default"),
+            SubtitleDialogue(id="2.4", content="SUBTITLE", style="Default"),
+            SubtitleDialogue(id="2.6", content=" with formatting.", style="Default"),
             SubtitleDialogue(
                 id="3.0", content="Modified fourth \nsubtitle", style="Default"
             ),
@@ -160,7 +166,6 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
 
     def test_split_by_formatting(self):
         """Test the _split_by_formatting function with various formatting scenarios."""
-        from format.ssa_format import _split_by_formatting
 
         # Test with no formatting
         plain_text = "Hello world"
@@ -212,7 +217,6 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
 
     def test_update_substring(self):
         """Test the _update_substring function with various formatting scenarios."""
-        from format.ssa_format import _update_substring
 
         # Test with no formatting
         plain_text = "Hello world"
@@ -269,7 +273,6 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
 
     def test_backward_deduplicate(self):
         """Test the _backward_dedpulicate function."""
-        from format.ssa_format import _backward_dedpulicate
 
         # Test case 1: No duplicates
         sections1 = [(0, 0, "a"), (1, 0, "b"), (2, 0, "c")]
