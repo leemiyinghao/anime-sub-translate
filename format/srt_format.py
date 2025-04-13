@@ -53,6 +53,20 @@ class SubtitleFormatSRT(SubtitleFormat):
                 raise IndexError("Subtitle ID out of range")
             self._raw_format[_id].content = new_subtitle.content
 
+    def update_title(self, title: str) -> None:
+        """
+        Replaces the title in the raw text of the subtitle file if applicable.
+        :param title: The new title to replace the old one.
+        """
+        pass
+
+    def as_str(self) -> str:
+        """
+        Returns the raw text of the subtitle file as a string.
+        :return: The raw text of the subtitle file.
+        """
+        return srt.compose(self._raw_format)
+
 
 def _serialize_id(id: int) -> str:
     return f"{id}"
