@@ -1,5 +1,5 @@
 import os
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from subtitle_types import SubtitleDialogue
 
@@ -12,30 +12,34 @@ def read_subtitle_file(subtitle_file: str) -> str:
         return file.read()
 
 
-def find_files_from_path(path: str, ignore_postfix: str) -> List[str]:
+def find_files_from_path(
+    path: str, ignore_postfix: str, match_postfix: Optional[str] = None
+) -> List[str]:
     ignore_postfix = ignore_postfix.strip(".")
     # Check if path is a directory or a file
     subtitle_files = []
     if os.path.isdir(path):
-        # Find all subtitle files in the directory
-        for file in os.listdir(path):
-            if file.endswith((".srt", ".ssa", ".ass")):
-                subtitle_files.append(os.path.join(path, file))
+        # Find all subtitle files in the directory recursively
+        for root, _, files in os.walk(path):
+            for file in files:
+                if file.endswith((".srt", ".ssa", ".ass")):
+                    subtitle_files.append(os.path.join(root, file))
     else:
         # Single file mode
         if path.endswith((".srt", ".ssa", ".ass")):
             subtitle_files = [path]
         else:
             raise ValueError(f"Unsupported file format: {path}")
-    return sorted(
-        list(
-            filter(
-                lambda path: (ignore_postfix == "")
-                or (not path[:-4].endswith(ignore_postfix)),
-                subtitle_files,
-            )
-        )
-    )
+
+    if ignore_postfix:
+        subtitle_files = [
+            file for file in subtitle_files if not file[:-4].endswith(ignore_postfix)
+        ]
+    if match_postfix:
+        subtitle_files = [
+            file for file in subtitle_files if file[:-4].endswith(match_postfix)
+        ]
+    return sorted(subtitle_files)
 
 
 def chunk_dialogues(

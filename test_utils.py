@@ -5,9 +5,10 @@ import unittest
 from subtitle_types import SubtitleDialogue
 from utils import (
     chunk_dialogues,
+    dialogue_remap_id,
+    dialogue_remap_id_reverse,
     find_files_from_path,
     read_subtitle_file,
-    dialogue_remap_id, dialogue_remap_id_reverse,
 )
 
 
@@ -33,23 +34,36 @@ class TestUtils(unittest.TestCase):
             ssa_file_path = os.path.join(test_dir, "test_subtitle.translated.ssa")
             ass_file_path = os.path.join(test_dir, "test_subtitle.ass")
             txt_file_path = os.path.join(test_dir, "not_subtitle.txt")
+            sub_dir = os.path.join(test_dir, "sub")
+            os.makedirs(sub_dir, exist_ok=True)
+            sub_srt_file_path = os.path.join(sub_dir, "test_sub_subtitle.srt")
 
             open(srt_file_path, "w").close()
             open(ssa_file_path, "w").close()
             open(ass_file_path, "w").close()
             open(txt_file_path, "w").close()
+            open(sub_srt_file_path, "w").close()
 
             # Test find_files_from_path
             files = find_files_from_path(test_dir, "")
-            self.assertEqual(len(files), 3)
+            self.assertEqual(len(files), 4)
             self.assertTrue(srt_file_path in files)
+            self.assertTrue(sub_srt_file_path in files)
+
             self.assertTrue(ssa_file_path in files)
             self.assertTrue(ass_file_path in files)
 
             # Test with ignore_postfix
             files = find_files_from_path(test_dir, "translated")
-            self.assertEqual(len(files), 2)
+            self.assertEqual(len(files), 3)
             self.assertTrue(srt_file_path in files)
+            self.assertTrue(ass_file_path in files)
+
+            # Test with match_postfix
+            files = find_files_from_path(test_dir, "", match_postfix="subtitle")
+            self.assertEqual(len(files), 3)
+            self.assertTrue(srt_file_path in files)
+            self.assertTrue(sub_srt_file_path in files)
             self.assertTrue(ass_file_path in files)
 
     def test_chunk_dialogues(self):
@@ -76,7 +90,6 @@ class TestUtils(unittest.TestCase):
         chunks = chunk_dialogues([])
         self.assertEqual(len(chunks), 1)
         self.assertEqual(len(chunks[0]), 0)
-
 
     def test_dialogue_remap_id(self):
         dialogues = [
