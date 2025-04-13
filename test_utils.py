@@ -4,11 +4,14 @@ import unittest
 
 from subtitle_types import SubtitleDialogue
 from utils import (
+    best_match,
     chunk_dialogues,
     dialogue_remap_id,
     dialogue_remap_id_reverse,
     find_files_from_path,
+    levenshtein_distance,
     read_subtitle_file,
+    string_similarity,
 )
 
 
@@ -116,6 +119,82 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(len(remapped_dialogues), 2)
         self.assertEqual(remapped_dialogues[0].id, "123")
         self.assertEqual(remapped_dialogues[1].id, "456")
+
+    def test_string_similarity_identical(self):
+        self.assertEqual(string_similarity("hello", "hello"), 1.0)
+
+    def test_string_similarity_empty(self):
+        self.assertEqual(string_similarity("", ""), 0.0)
+        self.assertEqual(string_similarity("hello", ""), 0.0)
+        self.assertEqual(string_similarity("", "hello"), 0.0)
+
+    def test_string_similarity_partial(self):
+        self.assertAlmostEqual(string_similarity("abc", "abd"), 2 / 3)
+
+    def test_string_similarity_different(self):
+        self.assertEqual(string_similarity("abc", "def"), 0.0)
+
+    def test_string_similarity_case_insensitive(self):
+        self.assertAlmostEqual(string_similarity("Hello", "hello"), 1.0)
+
+
+class TestLevenshteinDistance(unittest.TestCase):
+    def test_levenshtein_distance_identical(self):
+        self.assertEqual(levenshtein_distance("hello", "hello"), 0)
+
+    def test_levenshtein_distance_empty(self):
+        self.assertEqual(levenshtein_distance("", ""), 0)
+        self.assertEqual(levenshtein_distance("hello", ""), 5)
+        self.assertEqual(levenshtein_distance("", "hello"), 5)
+
+    def test_levenshtein_distance_substitution(self):
+        self.assertEqual(levenshtein_distance("abc", "abd"), 1)
+
+    def test_levenshtein_distance_insertion(self):
+        self.assertEqual(levenshtein_distance("abc", "abdc"), 1)
+
+    def test_levenshtein_distance_deletion(self):
+        self.assertEqual(levenshtein_distance("abc", "ab"), 1)
+
+
+class TestBestMatch(unittest.TestCase):
+    def test_best_match_empty_candidates(self):
+        self.assertIsNone(best_match("test", [], key=lambda x: x))
+
+    def test_best_match_identical(self):
+        candidates = ["hello", "world", "test"]
+        self.assertEqual(best_match("test", candidates, key=lambda x: x), "test")
+
+    def test_best_match_partial(self):
+        candidates = ["hello", "world", "testing"]
+        self.assertEqual(best_match("test", candidates, key=lambda x: x), "testing")
+
+    def test_best_match_no_match(self):
+        candidates = ["hello", "world", "python"]
+        self.assertIsNone(best_match("test", candidates, key=lambda x: x))
+
+    def test_best_match_threshold(self):
+        candidates = ["hello", "world", "testing"]
+        self.assertIsNone(
+            best_match("test", candidates, key=lambda x: x, threshold=0.8)
+        )
+
+    def test_best_match_key(self):
+        candidates = [{"name": "hello"}, {"name": "world"}, {"name": "testing"}]
+        self.assertEqual(
+            best_match("test", candidates, key=lambda x: x["name"]), {"name": "testing"}
+        )
+
+    def test_best_match_multiple_candidate_strings(self):
+        candidates = ["hello", "world", "testing", "test2"]
+
+        def key(x):
+            if x == "test2":
+                return ["test", "test2"]
+            else:
+                return x
+
+        self.assertEqual(best_match("test", candidates, key=key), "test2")
 
 
 if __name__ == "__main__":

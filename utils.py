@@ -1,5 +1,5 @@
 import os
-from typing import Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Sequence, TypeVar
 
 from subtitle_types import SubtitleDialogue
 
@@ -111,3 +111,92 @@ def dialogue_remap_id_reverse(
             )
         )
     return remapped_dialogues
+
+
+def string_similarity(s1: str, s2: str) -> float:
+    """
+    Calculate the similarity between two strings in terms of character overlap based on Levenshtein Distance, insensitive to case.
+    :param s1: The first string.
+    :param s2: The second string.
+    :return: A float representing the similarity between the two strings.
+    """
+    s1 = s1.lower()
+    s2 = s2.lower()
+    if not s1 or not s2:
+        return 0.0
+
+    if s1 == s2:
+        return 1.0
+
+    # Calculate the Levenshtein distance
+    distance = levenshtein_distance(s1, s2)
+    max_len = max(len(s1), len(s2))
+    if max_len == 0:
+        return 0.0
+    return 1.0 - distance / max_len
+
+
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """
+    Calculate the Levenshtein distance between two strings.
+    :param s1: The first string.
+    :param s2: The second string.
+    :return: The Levenshtein distance between the two strings.
+    """
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+
+    return previous_row[-1]
+
+
+T = TypeVar("T")
+
+
+def best_match(
+    match: str,
+    candidates: Sequence[T],
+    key=Callable[[], Iterable[str]],
+    threshold: float = 0.5,
+) -> Optional[T]:
+    """
+    Find the best match for a given string from a list of candidates, with threshold.
+    :param match: The string to match.
+    :param candidates: The list of candidates to match against.
+    :param key: A function to extract the string from the candidate.
+    :return: The best matching candidate.
+    """
+    best_candidate = None
+    best_similarity = 0.0
+
+    for candidate in candidates:
+        candidate_strs = key(candidate)
+        if not candidate_strs:
+            continue
+        if isinstance(candidate_strs, str):
+            candidate_strs = [candidate_strs]
+        for candidate_str in candidate_strs:
+            if not candidate_str:
+                continue
+            # Calculate the similarity between the match and the candidate string
+            similarity = string_similarity(match, candidate_str)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_candidate = candidate
+
+    if best_similarity < threshold:
+        return None
+
+    return best_candidate
