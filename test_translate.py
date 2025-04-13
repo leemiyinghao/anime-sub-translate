@@ -327,11 +327,11 @@ class TestTranslate(unittest.TestCase):
 
         # Mock read_subtitle_file to return a known content
         with (
-            patch("translate.read_subtitle_file") as mock_read_subtitle_file,
+            patch("translate.parse_subtitle_file") as mock_parse_subtitle_file,
             patch("translate.find_files_from_path") as mock_find_files_from_path,
         ):
-            mock_read_subtitle_file.return_value = self.mock_subtitle_format
-            mock_find_files_from_path.return_alue = ["/path/to/output.srt"]
+            mock_parse_subtitle_file.return_value = self.mock_subtitle_format
+            mock_find_files_from_path.return_value = ["/path/to/subtitle1.srt"]
 
             result = await task_prepare_context(mock_task_parameter)
 
@@ -508,6 +508,8 @@ class TestTranslate(unittest.TestCase):
             base_path="/path/to/subtitles/",
             target_language="Spanish",
             set_description=ANY,
+            metadata=ANY,
+            pre_translated_context=ANY,
         )
         expected_calls = [call(ANY) for _ in default_tasks]
         mock_asyncio_run.assert_has_calls(expected_calls)
