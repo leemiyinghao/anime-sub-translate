@@ -264,7 +264,13 @@ class TaskParameter:
         """
         Return a new TaskParameter with updated values.
         """
-        new_param = TaskParameter(**self.__dict__)
+        new_param = TaskParameter(
+            base_path=self.base_path,
+            target_language=self.target_language,
+            metadata=self.metadata,
+            pre_translated_context=self.pre_translated_context,
+            set_description=self.set_description,
+        )
         for key, value in kwargs.items():
             setattr(new_param, key, value)
         return new_param
@@ -285,9 +291,9 @@ async def task_prepare_context(
 
     if not pre_translated_context:
         # read all files
-        subtitle_contents = []
+        subtitle_contents: list[SubtitleFormat] = []
         for subtitle_path in param.subtitle_paths:
-            content = read_subtitle_file(subtitle_path)
+            content = parse_subtitle_file(subtitle_path)
             subtitle_contents.append(content)
 
         # pre-translate context
