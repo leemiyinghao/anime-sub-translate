@@ -10,6 +10,9 @@ from anilist.base import (
     AniListCharacterNodeDTO,
     AniListCharacterPageInfoDTO,
     AniListMetadataDTO,
+    AniListMetadataMediaResponseDTO,
+    AniListMetadataMediasResponseDTO,
+    AniListMetadataPageResponseDTO,
     AniListTitleDTO,
     _load_all_characters,
     _query_mediaset_metadata,
@@ -56,18 +59,32 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
             "characters": self.sample_character_connection_data,
         }
 
-    async def test_search_mediaset_metadata(self):
+    @patch(
+        "anilist.base.best_match",
+        side_effect=lambda title, list, *args, **kwargs: list[0],
+    )
+    async def test_search_mediaset_metadata(self, mock_best_match):
         """Test the _search_mediaset_metadata function with mocked responses."""
         # Create a mock response for the first page
-        first_page_response = AniListMetadataDTO(
-            id=16498,
-            title=AniListTitleDTO(**self.sample_title_data),
-            synonyms=["AoT", "SnK"],
-            description="Several hundred years ago, humans were nearly exterminated by giants.",
-            characters=AniListCharacterConnectionDTO(
-                pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
-                nodes=[AniListCharacterNodeDTO(**self.sample_character_node_data)],
-            ),
+        first_page_response = AniListMetadataPageResponseDTO(
+            Page=AniListMetadataMediasResponseDTO(
+                media=[
+                    AniListMetadataDTO(
+                        id=16498,
+                        title=AniListTitleDTO(**self.sample_title_data),
+                        synonyms=["AoT", "SnK"],
+                        description="Several hundred years ago, humans were nearly exterminated by giants.",
+                        characters=AniListCharacterConnectionDTO(
+                            pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
+                            nodes=[
+                                AniListCharacterNodeDTO(
+                                    **self.sample_character_node_data
+                                )
+                            ],
+                        ),
+                    )
+                ]
+            )
         )
 
         # Create mock response for additional character pages
@@ -166,15 +183,17 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
     async def test_get_mediaset_metadata_by_id(self):
         """Test the _get_mediaset_metadata_by_id function with mocked responses."""
         # Create a mock response for the first page
-        first_page_response = AniListMetadataDTO(
-            id=16498,
-            title=AniListTitleDTO(**self.sample_title_data),
-            synonyms=["AoT", "SnK"],
-            description="Several hundred years ago, humans were nearly exterminated by giants.",
-            characters=AniListCharacterConnectionDTO(
-                pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
-                nodes=[AniListCharacterNodeDTO(**self.sample_character_node_data)],
-            ),
+        first_page_response = AniListMetadataMediaResponseDTO(
+            Media=AniListMetadataDTO(
+                id=16498,
+                title=AniListTitleDTO(**self.sample_title_data),
+                synonyms=["AoT", "SnK"],
+                description="Several hundred years ago, humans were nearly exterminated by giants.",
+                characters=AniListCharacterConnectionDTO(
+                    pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
+                    nodes=[AniListCharacterNodeDTO(**self.sample_character_node_data)],
+                ),
+            )
         )
 
         # Create mock response for additional character pages
@@ -302,26 +321,30 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
             mock_get_client.return_value = mock_client
 
             # Configure mock_query to return different responses based on the page number
-            async def mock_query_side_effect(client, query, variables):
+            async def mock_query_side_effect(client, query, variables, expect):
                 page = variables.get("charaPage", 0)
 
                 if page == 2:
                     # First additional page (page 2)
-                    return AniListMetadataDTO(
-                        id=16498,
-                        characters=AniListCharacterConnectionDTO(
-                            pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
-                            nodes=[page1_character],
-                        ),
+                    return AniListMetadataMediaResponseDTO(
+                        Media=AniListMetadataDTO(
+                            id=16498,
+                            characters=AniListCharacterConnectionDTO(
+                                pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
+                                nodes=[page1_character],
+                            ),
+                        )
                     )
                 elif page == 3:
                     # Second additional page (page 3)
-                    return AniListMetadataDTO(
-                        id=16498,
-                        characters=AniListCharacterConnectionDTO(
-                            pageInfo=AniListCharacterPageInfoDTO(hasNextPage=False),
-                            nodes=[page2_character],
-                        ),
+                    return AniListMetadataMediaResponseDTO(
+                        Media=AniListMetadataDTO(
+                            id=16498,
+                            characters=AniListCharacterConnectionDTO(
+                                pageInfo=AniListCharacterPageInfoDTO(hasNextPage=False),
+                                nodes=[page2_character],
+                            ),
+                        )
                     )
                 else:
                     # Any other page (should not be called in this test)
@@ -408,14 +431,16 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
             mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
-            async def mock_query_side_effect(client, query, variables):
+            async def mock_query_side_effect(client, query, variables, expect):
                 # Always return a response with hasNextPage=True to test the max page limit
-                return AniListMetadataDTO(
-                    id=16498,
-                    characters=AniListCharacterConnectionDTO(
-                        pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
-                        nodes=[character_template],
-                    ),
+                return AniListMetadataMediaResponseDTO(
+                    Media=AniListMetadataDTO(
+                        id=16498,
+                        characters=AniListCharacterConnectionDTO(
+                            pageInfo=AniListCharacterPageInfoDTO(hasNextPage=True),
+                            nodes=[character_template],
+                        ),
+                    )
                 )
 
             mock_query.side_effect = mock_query_side_effect
@@ -452,9 +477,14 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
 
             # Call the function
             variables = {"mediaId": 16498}
-            result = await _query_mediaset_metadata(
-                client=mock_client, query=GET_MEDIA_BY_ID_QUERY, variables=variables
+            _result = await _query_mediaset_metadata(
+                client=mock_client,
+                query=GET_MEDIA_BY_ID_QUERY,
+                variables=variables,
+                expect=AniListMetadataMediaResponseDTO,
             )
+            assert _result  # make pyright happy
+            result = _result.Media
 
             # Verify the client was called with correct parameters
             mock_client.execute_async.assert_called_once()
@@ -500,14 +530,18 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
             # Call the function
             variables = {"mediaId": 999999}  # Non-existent ID
             result = await _query_mediaset_metadata(
-                client=mock_client, query=GET_MEDIA_BY_ID_QUERY, variables=variables
+                client=mock_client,
+                query=GET_MEDIA_BY_ID_QUERY,
+                variables=variables,
+                expect=AniListMetadataMediaResponseDTO,
             )
+            assert result  # make pyright happy
 
             # Verify the client was called
             mock_client.execute_async.assert_called_once()
 
             # Verify the result is None
-            self.assertIsNone(result)
+            self.assertIsNone(result.Media)
 
     async def test_query_mediaset_metadata_invalid_response(self):
         """Test the _query_mediaset_metadata function with an invalid response."""
@@ -532,9 +566,14 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
 
             # Call the function
             variables = {"mediaId": 16498}
-            result = await _query_mediaset_metadata(
-                client=mock_client, query=GET_MEDIA_BY_ID_QUERY, variables=variables
+            _result = await _query_mediaset_metadata(
+                client=mock_client,
+                query=GET_MEDIA_BY_ID_QUERY,
+                variables=variables,
+                expect=AniListMetadataMediaResponseDTO,
             )
+            assert _result  # make pyright happy
+            result = _result.Media
 
             # Verify the client was called
             mock_client.execute_async.assert_called_once()

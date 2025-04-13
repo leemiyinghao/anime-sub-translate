@@ -1,11 +1,13 @@
-from typing import Optional
+from typing import List, Optional, Type, TypeVar
 
 from gql import Client, gql
 from gql.transport.aiohttp import AIOHTTPTransport
 from graphql import DocumentNode
+from logger import logger
 from pydantic import BaseModel, computed_field
 from setting import get_setting
 from subtitle_types import CharacterInfo, MediaSetMetadata
+from utils import best_match
 
 
 class AniListTitleDTO(BaseModel):
@@ -130,6 +132,18 @@ class AniListMetadataDTO(BaseModel):
         )
 
 
+class AniListMetadataMediaResponseDTO(BaseModel):
+    Media: Optional[AniListMetadataDTO]
+
+
+class AniListMetadataMediasResponseDTO(BaseModel):
+    media: List[AniListMetadataDTO]
+
+
+class AniListMetadataPageResponseDTO(BaseModel):
+    Page: AniListMetadataMediasResponseDTO
+
+
 def _get_transport() -> AIOHTTPTransport:
     """
     Returns the transport for the GraphQL client.
@@ -161,17 +175,41 @@ async def _search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
     :return: The media set metadata if found, None otherwise.
     """
     client = _get_client()
-    query = SEARCH_MEDIA_QUERY
+    query = SEARCH_MEDIA_PAGE_QUERY
     variables = _create_search_variable(title)
 
-    # First page
-    first_page_response = await _query_mediaset_metadata(
+    candidate_list_response = await _query_mediaset_metadata(
         client=client,
         query=query,
         variables=variables,
+        expect=AniListMetadataPageResponseDTO,
     )
+    candidate_list = None
+    if not candidate_list_response or not (
+        candidate_list := candidate_list_response.Page.media
+    ):
+        return None
 
-    if first_page_response is None:
+    logger.debug(
+        f"Found {len(candidate_list)} candidates for title '{title}' on AniList:"
+    )
+    for candidate in candidate_list:
+        logger.debug(
+            f" - {candidate.safe_title.safe_native} ({candidate.safe_title.safe_english},{candidate.safe_title.safe_romaji})"
+        )
+
+    # First page
+    first_page_response = best_match(
+        title,
+        candidate_list,
+        key=lambda x: [
+            x.safe_title.safe_native,
+            x.safe_title.safe_english,
+            x.safe_title.safe_romaji,
+        ],
+        threshold=0.2,
+    )
+    if not first_page_response:
         return None
 
     # ensure fields
@@ -201,13 +239,14 @@ async def _get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
     query = GET_MEDIA_BY_ID_QUERY
     variables = _create_id_variable(id)
 
-    first_page_response = await _query_mediaset_metadata(
+    response = await _query_mediaset_metadata(
         client=client,
         query=query,
         variables=variables,
+        expect=AniListMetadataMediaResponseDTO,
     )
-
-    if first_page_response is None:
+    first_page_response = None
+    if not response or not (first_page_response := response.Media):
         return None
 
     # ensure fields
@@ -251,24 +290,32 @@ async def _load_all_characters(
             client=client,
             query=query,
             variables=_variables,
+            expect=AniListMetadataMediaResponseDTO,
         )
+        media_response = None
+        if not response or not (media_response := response.Media):
+            break
 
-        if response is None or len(response.safe_characters.safe_nodes) == 0:
+        if len(media_response.safe_characters.safe_nodes) == 0:
             break
 
         # Append the characters to the first page response
-        result.extend(response.safe_characters.safe_nodes)
-        has_next_page = response.safe_characters.safe_pageInfo.hasNextPage
+        result.extend(media_response.safe_characters.safe_nodes)
+        has_next_page = media_response.safe_characters.safe_pageInfo.hasNextPage
         current_page += 1
 
     return result
+
+
+T = TypeVar("T", bound=Type[BaseModel])
 
 
 async def _query_mediaset_metadata(
     client: Client,
     query: DocumentNode,
     variables: dict,
-) -> Optional[AniListMetadataDTO]:
+    expect: T,
+) -> Optional[T]:
     """
     Queries the media set metadata using the GraphQL client.
     :param client: The GraphQL client.
@@ -277,9 +324,7 @@ async def _query_mediaset_metadata(
     :return: The media set metadata.
     """
     response = await client.execute_async(query, variable_values=variables)
-    if not response["Media"]:
-        return None
-    return AniListMetadataDTO.model_validate(response["Media"])
+    return expect.model_validate(response)
 
 
 def _create_search_variable(
@@ -365,10 +410,22 @@ GET_MEDIA_BY_ID_QUERY = gql(
 
 SEARCH_MEDIA_QUERY = gql(
     """query Media($search: String, $charaPage: Int, $charaPerPage: Int) {
-  Media(search: $search) {
+  Media(search: $search, type: ANIME) {
     """
     + MEDIA_FRAGMENT
     + """
+  }
+}"""
+)
+
+SEARCH_MEDIA_PAGE_QUERY = gql(
+    """query Media($search: String, $charaPage: Int, $charaPerPage: Int) {
+  Page (perPage: 5){
+    media(search: $search, type: ANIME) {
+      """
+    + MEDIA_FRAGMENT
+    + """
+    }
   }
 }"""
 )
