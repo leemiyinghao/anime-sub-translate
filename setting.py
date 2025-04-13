@@ -24,6 +24,7 @@ class _Setting(BaseSettings):
     llm_retry_times: int = 5
     llm_retry_delay: float = 2.0
     llm_retry_backoff: float = 2.0
+    openrouter_ignore_providers: list[str] = []
 
     # translator setting
     language_postfix: Optional[str] = None

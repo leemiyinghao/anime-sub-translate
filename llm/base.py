@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from typing import AsyncGenerator, Iterable, Optional, Type
 
 from cost import CostTracker
@@ -121,6 +122,16 @@ async def _send_llm_request(
         f"LLM message({len(messages)}) using {len(json.dumps(messages, ensure_ascii=False))} chars."
     )
 
+    extra_body = {}
+    if (
+        os.getenv("LLM_MODEL", "").startswith("openrouter/")
+        and get_setting().openrouter_ignore_providers
+    ):
+        extra_body["provider"] = {
+            "ignore": get_setting().openrouter_ignore_providers,
+        }
+
+    logger.debug(f"LLM extra body: {extra_body}")
     response = await litellm.acompletion(
         n=1,
         model=model,
@@ -129,6 +140,7 @@ async def _send_llm_request(
         response_format={"type": "json_object"},
         temperature=0.9,
         limit=limit,
+        extra_body=extra_body,
     )
 
     tokens = []
