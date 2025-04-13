@@ -54,7 +54,7 @@ def parse_json(model: Type[T], json_str: str) -> T:
     :return: The parsed object.
     """
     # remove code block wrapper or other useless prefix/suffix
-    if match := re.match(r"\{.*\}", json_str):
+    if match := re.search(r"\{.*\}", json_str):
         json_str = match.group(0)
     else:
         raise ValueError("Invalid JSON string")
