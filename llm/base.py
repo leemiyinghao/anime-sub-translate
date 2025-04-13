@@ -89,6 +89,7 @@ async def _send_llm_request(
         *[{"role": "system", "content": instruction} for instruction in instructions],
         *pretranslate_message,
         {"role": "system", "content": content},
+        *extra_prompts,
         {
             "role": "system",
             "content": f"{json_schema.prompt()}",
