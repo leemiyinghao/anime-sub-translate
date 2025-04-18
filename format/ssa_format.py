@@ -78,7 +78,7 @@ class SubtitleFormatSSA(SubtitleFormat):
         Updates the raw text of the subtitle file by replacing the content of the subtitles.
         :param subtitleDialogues: The generator of SubtitleDialogue objects.
         """
-        old_subtitle = [i.text for i in self._raw_format]
+        old_subtitle = [re.sub(r"\+N", "\n", i.text) for i in self._raw_format]
         for new_subtitle in subtitle_dialogues:
             # Update the content of the subtitle
             _id_pairs = _deserialize_id(new_subtitle.id)
