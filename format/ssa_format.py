@@ -46,7 +46,7 @@ class SubtitleFormatSSA(SubtitleFormat):
         """
         # Sort the subtitles by start time
         sorted_subtitles = filter(
-            lambda x: x[1].type == "Dialogue",
+            lambda x: x[1].is_text,
             sorted(enumerate(self._raw_format), key=lambda x: x[1].start),
         )
         sections: list[Section] = []
