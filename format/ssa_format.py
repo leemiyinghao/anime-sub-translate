@@ -56,7 +56,7 @@ class SubtitleFormatSSA(SubtitleFormat):
                 [
                     (idx, sidx, text)
                     for sidx, (text, is_formatting) in enumerate(
-                        _split_by_formatting(re.sub(r"\\+N", "\n", subtitle.text))
+                        _split_by_formatting(re.sub(r"\+N", "\n", subtitle.text))
                     )
                     if not is_formatting
                 ]
