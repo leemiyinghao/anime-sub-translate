@@ -1,7 +1,7 @@
 import os
 from typing import Callable, Iterable, List, Optional, Sequence, TypeVar
 
-from subtitle_types import SubtitleDialogue
+from subtitle_types import Dialogue
 
 
 def read_subtitle_file(subtitle_file: str) -> str:
@@ -43,9 +43,9 @@ def find_files_from_path(
 
 
 def chunk_dialogues(
-    dialogues: Iterable[SubtitleDialogue],
+    dialogues: Iterable[Dialogue],
     limit: int = 5_000,
-) -> list[list[SubtitleDialogue]]:
+) -> list[list[Dialogue]]:
     """
     Chunking dialogues into smaller chunks
     :param dialogues: Iterable of SubtitleDialogue
@@ -70,8 +70,8 @@ def chunk_dialogues(
 
 
 def dialogue_remap_id(
-    dialogues: Iterable[SubtitleDialogue],
-) -> tuple[list[SubtitleDialogue], dict[str, str]]:
+    dialogues: Iterable[Dialogue],
+) -> tuple[list[Dialogue], dict[str, str]]:
     """
     Remaps the IDs of the dialogues to reduce token length.
     :param dialogues: The list of dialogues to remap.
@@ -83,7 +83,7 @@ def dialogue_remap_id(
         new_id = str(idx)
         id_mapping[new_id] = dialogue.id
         remapped_dialogues.append(
-            SubtitleDialogue(
+            Dialogue(
                 id=new_id,
                 **dialogue.model_dump(exclude={"id"}),
             )
@@ -92,9 +92,9 @@ def dialogue_remap_id(
 
 
 def dialogue_remap_id_reverse(
-    dialogues: Iterable[SubtitleDialogue],
+    dialogues: Iterable[Dialogue],
     id_mapping: dict[str, str],
-) -> list[SubtitleDialogue]:
+) -> list[Dialogue]:
     """
     Reverses the ID remapping for the dialogues.
     :param dialogues: The list of dialogues to remap.
@@ -105,7 +105,7 @@ def dialogue_remap_id_reverse(
     for dialogue in dialogues:
         old_id = id_mapping.get(dialogue.id) or dialogue.id
         remapped_dialogues.append(
-            SubtitleDialogue(
+            Dialogue(
                 id=old_id,
                 **dialogue.model_dump(exclude={"id"}),
             )

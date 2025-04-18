@@ -6,7 +6,7 @@ from graphql import DocumentNode
 from logger import logger
 from pydantic import BaseModel, computed_field
 from setting import get_setting
-from subtitle_types import CharacterInfo, MediaSetMetadata
+from subtitle_types import CharacterInfo, Metadata
 from utils import best_match
 
 
@@ -113,8 +113,8 @@ class AniListMetadataDTO(BaseModel):
     def safe_characters(self) -> AniListCharacterConnectionDTO:
         return self.characters or AniListCharacterConnectionDTO()
 
-    def to_metadata(self) -> MediaSetMetadata:
-        return MediaSetMetadata(
+    def to_metadata(self) -> Metadata:
+        return Metadata(
             title=self.safe_title.safe_native,
             title_alt=[self.safe_title.safe_romaji, self.safe_title.safe_english],
             description=self.safe_description,
@@ -168,7 +168,7 @@ def _get_client() -> Client:
     )
 
 
-async def _search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
+async def _search_mediaset_metadata(title: str) -> Optional[Metadata]:
     """
     Searches for media set metadata by title.
     :param title: The title of the media set.
@@ -226,7 +226,7 @@ async def _search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
     return first_page_response.to_metadata()
 
 
-async def search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
+async def search_mediaset_metadata(title: str) -> Optional[Metadata]:
     try:
         return await _search_mediaset_metadata(title)
     except Exception as e:
@@ -234,7 +234,7 @@ async def search_mediaset_metadata(title: str) -> Optional[MediaSetMetadata]:
         return None
 
 
-async def _get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
+async def _get_mediaset_metadata_by_id(id: int) -> Optional[Metadata]:
     client = _get_client()
     query = GET_MEDIA_BY_ID_QUERY
     variables = _create_id_variable(id)
@@ -260,7 +260,7 @@ async def _get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
     return first_page_response.to_metadata()
 
 
-async def get_mediaset_metadata_by_id(id: int) -> Optional[MediaSetMetadata]:
+async def get_mediaset_metadata_by_id(id: int) -> Optional[Metadata]:
     try:
         return await _get_mediaset_metadata_by_id(id)
     except Exception as e:

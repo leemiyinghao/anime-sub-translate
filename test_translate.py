@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import ANY, MagicMock, call, patch
 
 from format.format import SubtitleFormat
-from subtitle_types import PreTranslatedContext, SubtitleDialogue
+from subtitle_types import Dialogue, TermBank, TermBankItem
 from translate import (
     TaskParameter,
     _prepare_context,
@@ -23,20 +23,18 @@ class TestTranslate(unittest.TestCase):
 
         # Sample dialogues for testing
         self.sample_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor="John", style="Default"),
-            SubtitleDialogue(id="2", content="World", actor="Jane", style="Default"),
-            SubtitleDialogue(id="3", content="Test", actor="John", style="Default"),
+            Dialogue(id="1", content="Hello", actor="John", style="Default"),
+            Dialogue(id="2", content="World", actor="Jane", style="Default"),
+            Dialogue(id="3", content="Test", actor="John", style="Default"),
         ]
 
         # Sample pre-translated context
-        self.pre_translated_context = [
-            PreTranslatedContext(
-                original="John", translated="Juan", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Jane", translated="Juana", description="Character name"
-            ),
-        ]
+        self.term_bank = TermBank(
+            context={
+                "John": TermBankItem(translated="Juan", description="Character name"),
+                "Jane": TermBankItem(translated="Juana", description="Character name"),
+            }
+        )
 
         # Configure the mock to return our sample dialogues
         self.mock_subtitle_format.dialogues.return_value = self.sample_dialogues
@@ -59,9 +57,9 @@ class TestTranslate(unittest.TestCase):
 
         # Mock the translated dialogues that would be returned by translate_dialogues
         translated_dialogues = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
-            SubtitleDialogue(id="3", content="Prueba"),
+            Dialogue(id="1", content="Hola"),
+            Dialogue(id="2", content="Mundo"),
+            Dialogue(id="3", content="Prueba"),
         ]
 
         # Set up the mock to return our translated dialogues when called
@@ -69,7 +67,7 @@ class TestTranslate(unittest.TestCase):
 
         # Call the function being tested
         result = await translate_file(
-            self.mock_subtitle_format, "Spanish", self.pre_translated_context
+            self.mock_subtitle_format, "Spanish", self.term_bank
         )
 
         # Verify the function behaved as expected
@@ -98,11 +96,11 @@ class TestTranslate(unittest.TestCase):
 
         # Mock the translated dialogues for each chunk
         translated_chunk1 = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
+            Dialogue(id="1", content="Hola"),
+            Dialogue(id="2", content="Mundo"),
         ]
         translated_chunk2 = [
-            SubtitleDialogue(id="3", content="Prueba"),
+            Dialogue(id="3", content="Prueba"),
         ]
 
         # Set up the mock to return our translated dialogues when called
@@ -110,7 +108,7 @@ class TestTranslate(unittest.TestCase):
 
         # Call the function being tested
         result = await translate_file(
-            self.mock_subtitle_format, "Spanish", self.pre_translated_context
+            self.mock_subtitle_format, "Spanish", self.term_bank
         )
 
         # Verify the function behaved as expected
@@ -135,8 +133,8 @@ class TestTranslate(unittest.TestCase):
 
         # Sample dialogues for the second format
         sample_dialogues2 = [
-            SubtitleDialogue(id="4", content="Another", actor="Bob", style="Default"),
-            SubtitleDialogue(id="5", content="Example", actor="Alice", style="Default"),
+            Dialogue(id="4", content="Another", actor="Bob", style="Default"),
+            Dialogue(id="5", content="Example", actor="Alice", style="Default"),
         ]
 
         # Configure the mocks to return our sample dialogues
@@ -148,25 +146,22 @@ class TestTranslate(unittest.TestCase):
         mock_chunk_dialogues.return_value = [all_dialogues]
 
         # Mock the context that would be returned by translate_context
-        context_result = [
-            PreTranslatedContext(
-                original="John", translated="Juan", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Jane", translated="Juana", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Bob", translated="Roberto", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Alice", translated="Alicia", description="Character name"
-            ),
-        ]
+        context_result = TermBank(
+            context={
+                "John": TermBankItem(translated="Juan", description="Character name"),
+                "Jane": TermBankItem(translated="Juana", description="Character name"),
+                "Bob": TermBankItem(translated="Roberto", description="Character name"),
+                "Alice": TermBankItem(
+                    translated="Alicia", description="Character name"
+                ),
+            }
+        )
 
         # Set up the mock to return our context when called
         mock_translate_context.return_value = context_result
-        mock_refine_context.return_value = context_result
+        mock_refine_context.return_value = context_result.context.values()
 
+        mock_refine_context.side_effect = lambda contexts, *args, **kwargs: contexts
         # Call the function being tested
         result = await _prepare_context(
             [self.mock_subtitle_format, mock_subtitle_format2], "Spanish"
@@ -174,7 +169,12 @@ class TestTranslate(unittest.TestCase):
 
         # Verify the function behaved as expected
         mock_chunk_dialogues.assert_called_once_with(all_dialogues, 500000)
-        mock_translate_context.assert_called_once()
+        mock_translate_context.assert_called_once_with(
+            original=all_dialogues,
+            target_language="Spanish",
+            metadata=None,
+            limit=500000,
+        )
         mock_refine_context.assert_called_once()
 
         # Check that the result contains all the expected context items
@@ -191,8 +191,8 @@ class TestTranslate(unittest.TestCase):
 
         # Sample dialogues for the second format
         sample_dialogues2 = [
-            SubtitleDialogue(id="4", content="Another", actor="Bob", style="Default"),
-            SubtitleDialogue(id="5", content="Example", actor="Alice", style="Default"),
+            Dialogue(id="4", content="Another", actor="Bob", style="Default"),
+            Dialogue(id="5", content="Example", actor="Alice", style="Default"),
         ]
 
         # Configure the mocks to return our sample dialogues
@@ -205,45 +205,38 @@ class TestTranslate(unittest.TestCase):
         mock_chunk_dialogues.return_value = [chunk1, chunk2]
 
         # Mock the context that would be returned by translate_context for each chunk
-        context_result1 = [
-            PreTranslatedContext(
-                original="John", translated="Juan", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Jane", translated="Juana", description="Character name"
-            ),
-        ]
+        context_result1 = TermBank(
+            context={
+                "John": TermBankItem(translated="Juan", description="Character name"),
+                "Jane": TermBankItem(translated="Juana", description="Character name"),
+            }
+        )
 
-        context_result2 = [
-            PreTranslatedContext(
-                original="Bob", translated="Roberto", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Alice", translated="Alicia", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Jane", translated="Juana", description="Character name"
-            ),
-            # duplicated
-            PreTranslatedContext(
-                original="Jane", translated="Juana", description="Character name"
-            ),
-        ]
+        context_result2 = TermBank(
+            context={
+                "Bob": TermBankItem(translated="Roberto", description="Character name"),
+                "Alice": TermBankItem(
+                    translated="Alicia", description="Character name"
+                ),
+                "Jane": TermBankItem(translated="Juana", description="Character name"),
+            }
+        )
 
-        expected_result = [
-            PreTranslatedContext(
-                original="Bob", translated="Roberto", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Alice", translated="Alicia", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Jane", translated="Juana", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="John", translated="Juan", description="Character name"
-            ),
-        ]
+        expected_result = TermBank(
+            context={
+                "Bob": TermBankItem(translated="Roberto", description="Character name"),
+                "Alice": TermBankItem(
+                    translated="Alicia", description="Character name"
+                ),
+                "Jane": TermBankItem(translated="Juana", description="Character name"),
+                "John": TermBankItem(translated="Juan", description="Character name"),
+            }
+        )
+
+        def _assert_same_term_bank(a: TermBank, b: TermBank):
+            a_sorted = sorted(a.context.items())
+            b_sorted = sorted(b.context.items())
+            assert a_sorted == b_sorted
 
         # Set up the mock to return our context when called
         mock_translate_context.side_effect = [context_result1, context_result2]
@@ -259,15 +252,12 @@ class TestTranslate(unittest.TestCase):
         self.assertEqual(mock_translate_context.call_count, 2)
         self.maxDiff = None
         self.assertEqual(
-            sorted(
-                mock_refine_context.call_args.kwargs["contexts"],
-                key=lambda c: c.original,
-            ),
-            sorted(expected_result, key=lambda c: c.original),
+            mock_refine_context.call_args.kwargs["contexts"],
+            expected_result,
         )
 
         # Check that the result contains all the expected context items from both chunks
-        self.assertEqual(result, expected_result)
+        _assert_same_term_bank(result, expected_result)
 
     @patch("translate.translate_context")
     @patch("translate.refine_context")
@@ -303,16 +293,16 @@ class TestTranslate(unittest.TestCase):
     ):
         # Mock the TaskParameter
         mock_load_pre_translate_store.return_value = None
-        mock__prepare_context.return_value = self.pre_translated_context
+        mock__prepare_context.return_value = self.term_bank
 
         # Create a mock SubtitleFormat for testing
         self.mock_subtitle_format = MagicMock(spec=SubtitleFormat)
 
         # Sample dialogues for testing
         self.sample_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor="John", style="Default"),
-            SubtitleDialogue(id="2", content="World", actor="Jane", style="Default"),
-            SubtitleDialogue(id="3", content="Test", actor="John", style="Default"),
+            Dialogue(id="1", content="Hello", actor="John", style="Default"),
+            Dialogue(id="2", content="World", actor="Jane", style="Default"),
+            Dialogue(id="3", content="Test", actor="John", style="Default"),
         ]
 
         # Configure the mock to return our sample dialogues
@@ -321,7 +311,7 @@ class TestTranslate(unittest.TestCase):
         mock_task_parameter = MagicMock()
         mock_task_parameter.base_path = "/path/to/subtitles"
         mock_task_parameter.target_language = "Spanish"
-        mock_task_parameter.pre_translated_context = None
+        mock_task_parameter.term_bank = None
         mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
         mock_task_parameter.update.return_value = mock_task_parameter
 
@@ -339,11 +329,9 @@ class TestTranslate(unittest.TestCase):
         mock_load_pre_translate_store.assert_called_once_with("/path/to/subtitles")
         mock__prepare_context.assert_called_once()
         mock_save_pre_translate_store.assert_called_once_with(
-            "/path/to/subtitles", self.pre_translated_context
+            "/path/to/subtitles", self.term_bank
         )
-        mock_task_parameter.update.assert_called_once_with(
-            pre_translated_context=self.pre_translated_context
-        )
+        mock_task_parameter.update.assert_called_once_with(term_bank=self.term_bank)
         self.assertEqual(result, mock_task_parameter)
 
     @patch("translate.load_pre_translate_store")
@@ -356,16 +344,16 @@ class TestTranslate(unittest.TestCase):
         mock_load_pre_translate_store,
     ):
         # Mock the TaskParameter
-        mock_load_pre_translate_store.return_value = self.pre_translated_context
+        mock_load_pre_translate_store.return_value = self.term_bank
 
         # Create a mock SubtitleFormat for testing
         self.mock_subtitle_format = MagicMock(spec=SubtitleFormat)
 
         # Sample dialogues for testing
         self.sample_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor="John", style="Default"),
-            SubtitleDialogue(id="2", content="World", actor="Jane", style="Default"),
-            SubtitleDialogue(id="3", content="Test", actor="John", style="Default"),
+            Dialogue(id="1", content="Hello", actor="John", style="Default"),
+            Dialogue(id="2", content="World", actor="Jane", style="Default"),
+            Dialogue(id="3", content="Test", actor="John", style="Default"),
         ]
 
         # Configure the mock to return our sample dialogues
@@ -374,7 +362,7 @@ class TestTranslate(unittest.TestCase):
         mock_task_parameter = MagicMock()
         mock_task_parameter.base_path = "/path/to/subtitles"
         mock_task_parameter.target_language = "Spanish"
-        mock_task_parameter.pre_translated_context = None
+        mock_task_parameter.term_bank = None
         mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
         mock_task_parameter.update.return_value = mock_task_parameter
 
@@ -384,9 +372,7 @@ class TestTranslate(unittest.TestCase):
         mock_load_pre_translate_store.assert_called_once_with("/path/to/subtitles")
         mock__prepare_context.assert_not_called()
         mock_save_pre_translate_store.assert_not_called()
-        mock_task_parameter.update.assert_called_once_with(
-            pre_translated_context=self.pre_translated_context
-        )
+        mock_task_parameter.update.assert_called_once_with(term_bank=self.term_bank)
         self.assertEqual(result, mock_task_parameter)
 
     @patch("translate.os.path.exists")
@@ -406,7 +392,7 @@ class TestTranslate(unittest.TestCase):
         mock_task_parameter = MagicMock()
         mock_task_parameter.base_path = "/path/to/subtitles"
         mock_task_parameter.target_language = "Spanish"
-        mock_task_parameter.pre_translated_context = self.pre_translated_context
+        mock_task_parameter.term_bank = self.term_bank
         mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
 
         # Mock parse_subtitle_file to return a mock SubtitleFormat
@@ -425,7 +411,7 @@ class TestTranslate(unittest.TestCase):
         mock_task_parameter = MagicMock()
         mock_task_parameter.base_path = "/path/to/subtitles"
         mock_task_parameter.target_language = "Spanish"
-        mock_task_parameter.pre_translated_context = self.pre_translated_context
+        mock_task_parameter.term_bank = self.term_bank
         mock_task_parameter.subtitle_paths = ["/path/to/subtitle1.srt"]
         mock_task_parameter.update.return_value = mock_task_parameter
         result = await task_translate_files(mock_task_parameter)
@@ -435,7 +421,7 @@ class TestTranslate(unittest.TestCase):
         mock_translate_file.assert_called_once_with(
             mock_subtitle_format,
             mock_task_parameter.target_language,
-            mock_task_parameter.pre_translated_context,
+            mock_task_parameter.term_bank,
             metadata=mock_task_parameter.metadata,
         )
         mock_get_output_path.assert_called_once_with(
@@ -488,7 +474,7 @@ class TestTranslate(unittest.TestCase):
         mock_task_parameter,
         mock_os_path_isdir,
         mock_current_progress,
-        mock_tqdm,
+        _,
         mock_speedometer,
         mock_asyncio_run,
     ):
@@ -509,7 +495,7 @@ class TestTranslate(unittest.TestCase):
             target_language="Spanish",
             set_description=ANY,
             metadata=ANY,
-            pre_translated_context=ANY,
+            term_bank=ANY,
         )
         expected_calls = [call(ANY) for _ in default_tasks]
         mock_asyncio_run.assert_has_calls(expected_calls)

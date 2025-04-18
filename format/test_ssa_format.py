@@ -3,7 +3,7 @@ import tempfile
 import unittest
 
 from parameterized import parameterized
-from subtitle_types import SubtitleDialogue
+from subtitle_types import Dialogue
 
 from format.ssa_format import (
     SubtitleFormatSSA,
@@ -78,26 +78,24 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
     def test_dialogues_extraction(self):
         """Test that dialogues correctly extracts SubtitleDialogue objects from SSA format"""
         expected = [
-            SubtitleDialogue(id="0.0", content="Hello, world!", style="Default"),
-            SubtitleDialogue(
-                id="1.0", content="This is a second subtitle.", style="Default"
-            ),
-            SubtitleDialogue(
+            Dialogue(id="0.0", content="Hello, world!", style="Default"),
+            Dialogue(id="1.0", content="This is a second subtitle.", style="Default"),
+            Dialogue(
                 id="2.2",
                 content="Third ",
                 style="Default",
             ),
-            SubtitleDialogue(
+            Dialogue(
                 id="2.4",
                 content="subtitle",
                 style="Default",
             ),
-            SubtitleDialogue(
+            Dialogue(
                 id="2.6",
                 content=" with formatting.",
                 style="Default",
             ),
-            SubtitleDialogue(
+            Dialogue(
                 id="3.0", content="Line with \nnewline character.", style="Default"
             ),
         ]
@@ -109,18 +107,12 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
     def test_update(self):
         """Test updating subtitle content"""
         expected = [
-            SubtitleDialogue(
-                id="0.0", content="Modified first subtitle", style="Default"
-            ),
-            SubtitleDialogue(
-                id="1.0", content="Modified second subtitle", style="Default"
-            ),
-            SubtitleDialogue(id="2.2", content="Modified ", style="Default"),
-            SubtitleDialogue(id="2.4", content="SUBTITLE", style="Default"),
-            SubtitleDialogue(id="2.6", content=" with formatting.", style="Default"),
-            SubtitleDialogue(
-                id="3.0", content="Modified fourth \nsubtitle", style="Default"
-            ),
+            Dialogue(id="0.0", content="Modified first subtitle", style="Default"),
+            Dialogue(id="1.0", content="Modified second subtitle", style="Default"),
+            Dialogue(id="2.2", content="Modified ", style="Default"),
+            Dialogue(id="2.4", content="SUBTITLE", style="Default"),
+            Dialogue(id="2.6", content=" with formatting.", style="Default"),
+            Dialogue(id="3.0", content="Modified fourth \nsubtitle", style="Default"),
         ]
 
         # Get the dialogues
@@ -146,7 +138,7 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
     def test_update_with_invalid_id(self, invalid_id):
         """Test updating with an invalid subtitle ID"""
         # Create a dialogue with an ID that's out of range
-        invalid_dialogue = SubtitleDialogue(id=invalid_id, content="Invalid")
+        invalid_dialogue = Dialogue(id=invalid_id, content="Invalid")
 
         # Attempt to update with the invalid dialogue
         with self.assertRaises(IndexError):

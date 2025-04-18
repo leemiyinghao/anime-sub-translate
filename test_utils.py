@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from subtitle_types import SubtitleDialogue
+from subtitle_types import Dialogue
 from utils import (
     best_match,
     chunk_dialogues,
@@ -72,10 +72,10 @@ class TestUtils(unittest.TestCase):
     def test_chunk_dialogues(self):
         # Create sample dialogues
         dialogues = [
-            SubtitleDialogue(id="1", content="A" * 2000, actor="John", style="Default"),
-            SubtitleDialogue(id="2", content="B" * 2000, actor="Jane", style="Default"),
-            SubtitleDialogue(id="3", content="C" * 2000, actor="John", style="Default"),
-            SubtitleDialogue(id="4", content="D" * 2000, actor="Jane", style="Default"),
+            Dialogue(id="1", content="A" * 2000, actor="John", style="Default"),
+            Dialogue(id="2", content="B" * 2000, actor="Jane", style="Default"),
+            Dialogue(id="3", content="C" * 2000, actor="John", style="Default"),
+            Dialogue(id="4", content="D" * 2000, actor="Jane", style="Default"),
         ]
 
         # Test chunking with default limit
@@ -96,8 +96,8 @@ class TestUtils(unittest.TestCase):
 
     def test_dialogue_remap_id(self):
         dialogues = [
-            SubtitleDialogue(id="123", content="Hello", actor="John", style="Default"),
-            SubtitleDialogue(id="456", content="World", actor="Jane", style="Default"),
+            Dialogue(id="123", content="Hello", actor="John", style="Default"),
+            Dialogue(id="456", content="World", actor="Jane", style="Default"),
         ]
 
         remapped_dialogues, id_mapping = dialogue_remap_id(dialogues)
@@ -109,8 +109,8 @@ class TestUtils(unittest.TestCase):
 
     def test_dialogue_remap_id_reverse(self):
         dialogues = [
-            SubtitleDialogue(id="0", content="Hello", actor="John", style="Default"),
-            SubtitleDialogue(id="1", content="World", actor="Jane", style="Default"),
+            Dialogue(id="0", content="Hello", actor="John", style="Default"),
+            Dialogue(id="1", content="World", actor="Jane", style="Default"),
         ]
         id_mapping = {"0": "123", "1": "456"}
 

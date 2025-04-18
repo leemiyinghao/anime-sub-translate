@@ -1,7 +1,7 @@
 from typing import Iterable, List
 
 import srt
-from subtitle_types import SubtitleDialogue
+from subtitle_types import Dialogue
 
 from .format import SubtitleFormat
 
@@ -25,7 +25,7 @@ class SubtitleFormatSRT(SubtitleFormat):
         """
         return filename.lower().endswith(".srt")
 
-    def dialogues(self) -> Iterable[SubtitleDialogue]:
+    def dialogues(self) -> Iterable[Dialogue]:
         """
         Returns a string representation of the dialogue in the SRT format.
         :param raw: The raw text of the subtitle file.
@@ -34,14 +34,14 @@ class SubtitleFormatSRT(SubtitleFormat):
         # Sort the subtitles by start time
         sorted_subtitles = sorted(self._raw_format, key=lambda x: x.start)
         for idx, subtitle in enumerate(sorted_subtitles):
-            yield SubtitleDialogue(
+            yield Dialogue(
                 id=_serialize_id(idx),
                 content=subtitle.content,
                 actor=None,  # SRT does not have character information
                 style=None,  # SRT does not have style information
             )
 
-    def update(self, subtitle_dialogues: Iterable[SubtitleDialogue]) -> None:
+    def update(self, subtitle_dialogues: Iterable[Dialogue]) -> None:
         """
         Updates the raw text of the subtitle file by replacing the content of the subtitles.
         :param subtitleDialogues: The generator of SubtitleDialogue objects.

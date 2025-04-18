@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from subtitle_types import MediaSetMetadata
+from subtitle_types import Metadata
 
 from anilist.base import (
     GET_MEDIA_BY_ID_QUERY,
@@ -119,7 +119,7 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
 
             # Verify the result
             self.assertIsNotNone(result)
-            self.assertIsInstance(result, MediaSetMetadata)
+            self.assertIsInstance(result, Metadata)
             assert result  # make pyright happy
             self.assertEqual(result.title, "進撃の巨人")
             self.assertIn("Shingeki no Kyojin", result.title_alt)
@@ -228,7 +228,7 @@ class TestAniListBase(unittest.IsolatedAsyncioTestCase):
 
             # Verify the result
             self.assertIsNotNone(result)
-            self.assertIsInstance(result, MediaSetMetadata)
+            self.assertIsInstance(result, Metadata)
             assert result  # make pyright happy
             self.assertEqual(result.title, "進撃の巨人")
             self.assertIn("Shingeki no Kyojin", result.title_alt)

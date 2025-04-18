@@ -4,7 +4,7 @@ from typing import Iterable, Mapping, Optional
 
 from logger import logger
 from pysubs2 import SSAFile
-from subtitle_types import SubtitleDialogue
+from subtitle_types import Dialogue
 
 from .format import SubtitleFormat
 
@@ -20,7 +20,7 @@ class SubtitleFormatSSA(SubtitleFormat):
     """
 
     _raw_format: SSAFile
-    _dialogues: Mapping[str, SubtitleDialogue]
+    _dialogues: Mapping[str, Dialogue]
 
     def init_subtitle(self) -> None:
         """
@@ -38,7 +38,7 @@ class SubtitleFormatSSA(SubtitleFormat):
         """
         return filename[-4:].lower() in (".ssa", ".ass")
 
-    def dialogues(self) -> Iterable[SubtitleDialogue]:
+    def dialogues(self) -> Iterable[Dialogue]:
         """
         Returns a string representation of the dialogue in the SSA format.
         :param raw: The raw text of the subtitle file.
@@ -67,14 +67,14 @@ class SubtitleFormatSSA(SubtitleFormat):
         for id_pairs, text in deduplicated_sections:
             # Create a new SubtitleDialogue object for each deduplicated section
             text = re.sub(r"\\+N", "\n", text)
-            yield SubtitleDialogue(
+            yield Dialogue(
                 id=_serialize_id(id_pairs),
                 content=text,
                 actor=self._raw_format[id_pairs[0][0]].name or None,
                 style=self._raw_format[id_pairs[0][0]].style or None,
             )
 
-    def update(self, subtitle_dialogues: Iterable[SubtitleDialogue]) -> None:
+    def update(self, subtitle_dialogues: Iterable[Dialogue]) -> None:
         """
         Updates the raw text of the subtitle file by replacing the content of the subtitles.
         :param subtitleDialogues: The generator of SubtitleDialogue objects.

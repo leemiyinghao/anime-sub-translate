@@ -4,9 +4,8 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from functools import cached_property
-from genericpath import isdir
 from itertools import batched
-from typing import Awaitable, Callable, Dict, Iterable, Optional, TypeVar
+from typing import Awaitable, Callable, Iterable, Optional, TypeVar
 
 from tqdm.auto import tqdm
 
@@ -24,7 +23,7 @@ from store import (
     save_media_set_metadata,
     save_pre_translate_store,
 )
-from subtitle_types import MediaSetMetadata, PreTranslatedContext, SubtitleDialogue
+from subtitle_types import Dialogue, Metadata, TermBank
 from utils import (
     chunk_dialogues,
     dialogue_remap_id,
@@ -74,8 +73,8 @@ def write_translated_subtitle(translated_content: str, output_path: str) -> None
 async def translate_file(
     subtitle_content: SubtitleFormat,
     target_language: str,
-    pre_translated_context: Optional[Iterable[PreTranslatedContext]] = None,
-    metadata: Optional[MediaSetMetadata] = None,
+    term_bank: Optional[TermBank] = None,
+    metadata: Optional[Metadata] = None,
 ) -> SubtitleFormat:
     """
     Translates the subtitle content in chunks.
@@ -106,13 +105,11 @@ async def translate_file(
                     translate_dialogues,
                     original=dialogue_chunk,
                     target_language=target_language,
-                    pretranslate=pre_translated_context,
+                    pretranslate=term_bank,
                     metadata=metadata,
                 )
             )
-        translated_chunk_group: list[list[SubtitleDialogue]] = await asyncio.gather(
-            *tasks
-        )
+        translated_chunk_group: list[list[Dialogue]] = await asyncio.gather(*tasks)
         if get_setting().debug:
             logger.info("Translated chunk:")
             for idx, dialogue in enumerate(
@@ -131,9 +128,9 @@ async def translate_file(
 async def _prepare_context(
     subtitle_contents: Iterable[SubtitleFormat],
     target_language: str,
-    metadata: Optional[MediaSetMetadata] = None,
-    pre_translated_context: Optional[Iterable[PreTranslatedContext]] = None,
-) -> list[PreTranslatedContext]:
+    metadata: Optional[Metadata] = None,
+    term_bank: Optional[TermBank] = None,
+) -> TermBank:
     """
     Prepares the translation by translating the context.
     """
@@ -147,7 +144,7 @@ async def _prepare_context(
     # Since we are only extracting context, output tokens will be far
     # less than input tokens. The output tokens is ignorable.
     max_chunk_size = get_setting().max_input_token
-    dialogues: list[SubtitleDialogue] = []
+    dialogues: list[Dialogue] = []
     for subtitle_content in subtitle_contents:
         dialogues.extend(subtitle_content.dialogues())
 
@@ -163,20 +160,16 @@ async def _prepare_context(
     ]  # add progress bar to each chunk
     refine_progress = current_progress().sub_progress()
 
-    _pre_translated_context: list[PreTranslatedContext] = list(
-        pre_translated_context or []
-    )
+    _term_bank = term_bank or TermBank(context={})
     concurrency = get_setting().concurrency  # Get concurrency setting
     per_response_limit = (
         int(get_setting().max_input_token / len(chunks))
         if chunks
         else get_setting().max_input_token
     )
-    for chunk_group in batched(
-        enumerate(chunks), concurrency
-    ):  # Batch chunks by concurrency
+    for chunk_group in batched(chunks, concurrency):  # Batch chunks by concurrency
         tasks = []
-        for idx, (dialogue_chunk, prog) in chunk_group:
+        for dialogue_chunk, prog in chunk_group:
             tasks.append(
                 prog.async_monitor(
                     translate_context,
@@ -187,45 +180,30 @@ async def _prepare_context(
                 )
             )
         new_contexts = await asyncio.gather(*tasks)
-        new_context: list[PreTranslatedContext] = [
-            context for context_list in new_contexts for context in context_list
-        ]
 
-        # deduplicate context by original
-        dedup_map: Dict[str, PreTranslatedContext] = dict()
-        for context in _pre_translated_context + new_context:
-            dedup_map[context.original] = context
-
-        _pre_translated_context = list(dedup_map.values())
+        for context in new_contexts:
+            _term_bank.update(context)
 
         if get_setting().debug:
             logger.debug("Update context:")
-            for idx, context in enumerate(_pre_translated_context):
-                logger.debug(
-                    f"  {idx}: {context.original} -> {context.translated} ({context.description})"
-                )
+            for k, context in _term_bank.context.items():
+                logger.debug(f"  {k} -> {context.translated} ({context.description})")
 
     # refine context
-    _pre_translated_context = await refine_progress.async_monitor(
+    _term_bank = await refine_progress.async_monitor(
         refine_context,
-        contexts=_pre_translated_context,
+        contexts=_term_bank,
         target_language=target_language,
         metadata=metadata,
         limit=get_setting().pre_translate_size,
     )
-    _pre_translated_context = [
-        context
-        for _, context in {
-            context.original: context for context in _pre_translated_context
-        }.items()
-    ]
 
-    return _pre_translated_context
+    return _term_bank
 
 
 async def prepare_metadata(
     path: str,
-) -> Optional[MediaSetMetadata]:
+) -> Optional[Metadata]:
     # resolve leaf directory name from path
     dir_name = os.path.abspath(path)
     if os.path.isfile(dir_name):
@@ -246,8 +224,8 @@ async def prepare_metadata(
 class TaskParameter:
     base_path: str
     target_language: str
-    metadata: Optional[MediaSetMetadata] = None
-    pre_translated_context: Optional[Iterable[PreTranslatedContext]] = None
+    metadata: Optional[Metadata] = None
+    term_bank: Optional[TermBank] = None
     set_description: Optional[Callable[[str], None]] = None
 
     @cached_property
@@ -269,7 +247,7 @@ class TaskParameter:
             base_path=self.base_path,
             target_language=self.target_language,
             metadata=self.metadata,
-            pre_translated_context=self.pre_translated_context,
+            term_bank=self.term_bank,
             set_description=self.set_description,
         )
         for key, value in kwargs.items():
@@ -283,14 +261,12 @@ async def task_prepare_context(
     """
     Prepares the translation by translating the context.
     """
-    pre_translated_context = param.pre_translated_context or []
+    term_bank = param.term_bank or TermBank(context={})
     param.set_description("Preparing context note") if param.set_description else None
-    if not pre_translated_context and (
-        stored := load_pre_translate_store(param.base_path)
-    ):
-        pre_translated_context = stored
+    if not term_bank and (stored := load_pre_translate_store(param.base_path)):
+        term_bank = stored
 
-    if not pre_translated_context:
+    if not term_bank:
         # read all files
         subtitle_contents: list[SubtitleFormat] = []
         for subtitle_path in param.subtitle_paths:
@@ -301,24 +277,22 @@ async def task_prepare_context(
             logger.warning("No subtitle files found, skipping context preparation.")
             return param
         # pre-translate context
-        pre_translated_context = await _prepare_context(
+        term_bank = await _prepare_context(
             subtitle_contents,
             param.target_language,
             metadata=param.metadata,
-            pre_translated_context=param.pre_translated_context,
+            term_bank=param.term_bank,
         )
 
         # save pre-translate context
-        save_pre_translate_store(param.base_path, pre_translated_context)
+        save_pre_translate_store(param.base_path, term_bank)
 
     # Print pre-translate context and metadata
     logger.info("Prepared context:")
-    for context in pre_translated_context:
-        logger.info(
-            f"  {context.original} -> {context.translated} ({context.description})"
-        )
+    for k, context in term_bank.context.items():
+        logger.info(f"  {k} -> {context.translated} ({context.description})")
 
-    return param.update(pre_translated_context=pre_translated_context)
+    return param.update(term_bank=term_bank)
 
 
 async def task_translate_files(param: TaskParameter) -> TaskParameter:
@@ -349,7 +323,7 @@ async def task_translate_files(param: TaskParameter) -> TaskParameter:
                 translate_file,
                 subtitle_format,
                 param.target_language,
-                param.pre_translated_context,
+                param.term_bank,
                 metadata=param.metadata,
             )
         except Exception as e:
@@ -381,7 +355,7 @@ async def task_prepare_metadata(param: TaskParameter) -> TaskParameter:
             f"Anime recognized as: {metadata.title} ({','.join(metadata.title_alt)})"
         )
         logger.debug(f"  {metadata.description}")
-        logger.debug(f"  Characters:")
+        logger.debug("  Characters:")
         for character in metadata.characters:
             logger.debug(
                 f"    {character.name}, {character.gender} ({','.join(character.name_alt)})"
@@ -428,7 +402,7 @@ def translate(
         target_language=target_language,
         set_description=lambda x: progress_bar.set_description(f"[{dirname}] {x}"),
         metadata=load_media_set_metadata(path),  # preload saved data
-        pre_translated_context=load_pre_translate_store(path),  # preload saved data
+        term_bank=load_pre_translate_store(path),  # preload saved data
     )
 
     for sub in task_param.subtitle_paths:

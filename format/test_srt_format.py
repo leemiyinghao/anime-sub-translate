@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from subtitle_types import SubtitleDialogue
+from subtitle_types import Dialogue
 
 from format.srt_format import SubtitleFormatSRT
 
@@ -57,11 +57,11 @@ Third subtitle with special characters:
         """Test that dialogues correctly extracts SubtitleDialogue objects from SRT format"""
         dialogues = list(self.srt_format.dialogues())
         expected = [
-            SubtitleDialogue(id="0", content="Hello, world!\nMy name is John Doe."),
-            SubtitleDialogue(
+            Dialogue(id="0", content="Hello, world!\nMy name is John Doe."),
+            Dialogue(
                 id="1", content="This is a second subtitle.\nWith multiple lines."
             ),
-            SubtitleDialogue(
+            Dialogue(
                 id="2", content="Third subtitle with special characters:\n!@#$%^&*()_+"
             ),
         ]
@@ -90,9 +90,7 @@ Third subtitle with special characters:
     def test_update_with_invalid_id(self):
         """Test updating with an invalid subtitle ID"""
         # Create a dialogue with an ID that's out of range
-        invalid_dialogue = SubtitleDialogue(
-            id="999", content="Invalid", actor=None, style=None
-        )
+        invalid_dialogue = Dialogue(id="999", content="Invalid", actor=None, style=None)
 
         # Attempt to update with the invalid dialogue
         with self.assertRaises(IndexError):
