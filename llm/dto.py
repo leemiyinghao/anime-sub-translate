@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Annotated, Dict, Iterable, List, Type, TypeVar
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator
+from pydantic_core import from_json
 from subtitle_types import (
     CharacterInfo,
     Dialogue,
@@ -72,7 +73,10 @@ def parse_json(model: Type[T], json_str: str) -> T:
         json_str = json_str[start : end + 1]
     else:
         raise ValueError("Invalid JSON string")
-    return model.model_validate_json(json_str)
+    # Allow partial parsing
+    # Some models may have troble with pairing quotes, we kind of allow that to reduce the error rate
+    # e.g.: GPT 4.1 Nano :(
+    return model.model_validate(from_json(json_str, allow_partial=True))
 
 
 @deprecated("PromptedDTO is deprecated, don't use it.")
