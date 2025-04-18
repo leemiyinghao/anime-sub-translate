@@ -143,14 +143,26 @@ class TaskRequest(Generic[ResponseDTO]):
         current_progress().set_total(self._task.char_limit())
         current_progress().reset()
         extra_prompts: list[LiteLLMMessage] = []
+        extra_body: Optional[dict] = None
+
         if _prompt := get_setting().llm_extra_prompt:
             extra_prompts.append(LiteLLMMessage(role="system", content=_prompt))
+
+        if (
+            model.startswith("openrouter/")
+            and get_setting().openrouter_ignore_providers
+        ):
+            extra_body = {
+                "provider": {"ignore": get_setting().openrouter_ignore_providers}
+            }
+
         response = await litellm.acompletion(
             n=1,
             model=model,
             messages=self._task.messages() + extra_prompts,
             stream=True,
             temperature=0.9,
+            extra_body=extra_body,
         )
         reasoning = ""
         async for message in self.parse_stream(response):  # type: ignore
