@@ -1,6 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from typing import (
+    Any,
     AsyncGenerator,
     AsyncIterator,
     Generic,
@@ -145,7 +146,7 @@ class TaskRequest(Generic[ResponseDTO]):
         current_progress().set_total(self._task.char_limit())
         current_progress().reset()
         extra_prompts: list[LiteLLMMessage] = []
-        extra_body: Optional[dict] = None
+        kwargs: dict[str, Any] = {}
 
         if _prompt := get_setting().llm_extra_prompt:
             extra_prompts.append(LiteLLMMessage(role="system", content=_prompt))
@@ -157,6 +158,7 @@ class TaskRequest(Generic[ResponseDTO]):
             extra_body = {
                 "provider": {"ignore": get_setting().openrouter_ignore_providers}
             }
+            kwargs["extra_body"] = extra_body
 
         response = await litellm.acompletion(
             n=1,
@@ -164,7 +166,7 @@ class TaskRequest(Generic[ResponseDTO]):
             messages=self._task.messages() + extra_prompts,
             stream=True,
             temperature=0.9,
-            extra_body=extra_body,
+            **kwargs,
         )
         reasoning = ""
         async for message in self.parse_stream(response):  # type: ignore
