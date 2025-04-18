@@ -115,7 +115,7 @@ class TaskRequest(Generic[ResponseDTO]):
                 )
             )
         except Exception as e:
-            logger.warning(f"Failed to calculate cost: {e}")
+            logger.debug(f"Failed to calculate cost: {e}")
         yield result
 
     async def send(self) -> ResponseDTO:
