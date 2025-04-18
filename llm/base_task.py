@@ -80,6 +80,7 @@ class TaskRequest(Generic[ResponseDTO]):
                 continue
             completion += delta
             char_count += len(delta)
+            current_progress().update(len(delta))
             Speedometer.increment(len(delta))
             if self._task.char_limit() != -1 and char_count > self._task.char_limit():
                 raise Exception(f"Character limit exceeded: {self._task.char_limit()}.")
@@ -99,6 +100,7 @@ class TaskRequest(Generic[ResponseDTO]):
             if not is_reasoning:
                 final_message += delta
 
+        current_progress().finish()
         result = parse_json(
             self._task._response_dto,
             final_message,
