@@ -79,6 +79,7 @@ class SubtitleFormatSSA(SubtitleFormat):
         Updates the raw text of the subtitle file by replacing the content of the subtitles.
         :param subtitleDialogues: The generator of SubtitleDialogue objects.
         """
+        old_subtitle = [i.text for i in self._raw_format]
         for new_subtitle in subtitle_dialogues:
             # Update the content of the subtitle
             _id_pairs = _deserialize_id(new_subtitle.id)
@@ -87,11 +88,11 @@ class SubtitleFormatSSA(SubtitleFormat):
                     raise IndexError("Subtitle ID out of range")
                 # Replace new lines with \N in the SSA format
                 try:
-                    self._raw_format[_id].text = re.sub(
+                    old_subtitle[_id] = re.sub(
                         r"\n",
                         r"\\N",
                         _update_substring(
-                            self._raw_format[_id].text, [(_sid, new_subtitle.content)]
+                            old_subtitle[_id], [(_sid, new_subtitle.content)]
                         ),
                     )
                 except Exception as e:
@@ -100,6 +101,10 @@ class SubtitleFormatSSA(SubtitleFormat):
                     logger.debug(f"Original text: {self._raw_format[_id].text}")
                     logger.debug(f"New text: {new_subtitle.content}")
                     raise
+        # Update the raw text of the subtitle file
+        for idx, subtitle in enumerate(old_subtitle):
+            # Update the text of the subtitle
+            self._raw_format[idx].text = subtitle
 
     def update_title(self, title: str) -> None:
         """
