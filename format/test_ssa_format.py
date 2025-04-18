@@ -81,17 +81,17 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
             Dialogue(id="0.0", content="Hello, world!", style="Default"),
             Dialogue(id="1.0", content="This is a second subtitle.", style="Default"),
             Dialogue(
-                id="2.2",
+                id="2.4",
                 content="Third ",
                 style="Default",
             ),
             Dialogue(
-                id="2.4",
+                id="2.6",
                 content="subtitle",
                 style="Default",
             ),
             Dialogue(
-                id="2.6",
+                id="2.8",
                 content=" with formatting.",
                 style="Default",
             ),
@@ -109,9 +109,9 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         expected = [
             Dialogue(id="0.0", content="Modified first subtitle", style="Default"),
             Dialogue(id="1.0", content="Modified second subtitle", style="Default"),
-            Dialogue(id="2.2", content="Modified ", style="Default"),
-            Dialogue(id="2.4", content="SUBTITLE", style="Default"),
-            Dialogue(id="2.6", content=" with formatting.", style="Default"),
+            Dialogue(id="2.4", content="Modified ", style="Default"),
+            Dialogue(id="2.6", content="SUBTITLE", style="Default"),
+            Dialogue(id="2.8", content=" with formatting.", style="Default"),
             Dialogue(id="3.0", content="Modified fourth \nsubtitle", style="Default"),
         ]
 
@@ -169,7 +169,13 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         result = _split_by_formatting(formatted_text)
         self.assertEqual(
             result,
-            [("Hello ", False), ("{\\i1}", True), ("world", False), ("{\\i0}", True)],
+            [
+                ("Hello ", False),
+                ("{\\i1}", True),
+                ("world", False),
+                ("{\\i0}", True),
+                ("", True),
+            ],
         )
 
         # Test with multiple formatting tags
@@ -178,6 +184,7 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         self.assertEqual(
             result,
             [
+                ("", True),
                 ("{\\an8}", True),
                 ("Hello ", False),
                 ("{\\i1}", True),
@@ -187,24 +194,41 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
                 ("{\\b1}", True),
                 ("world", False),
                 ("{\\b0}", True),
+                ("", True),
             ],
         )
 
         # Test with empty string
         empty_text = ""
         result = _split_by_formatting(empty_text)
-        self.assertEqual(result, [])
+        self.assertEqual(result, [("", True)])
 
         # Test with only formatting tags
         only_tags = "{\\i1}{\\b1}{\\u1}"
         result = _split_by_formatting(only_tags)
-        self.assertEqual(result, [("{\\i1}", True), ("{\\b1}", True), ("{\\u1}", True)])
+        self.assertEqual(
+            result,
+            [
+                ("", True),
+                ("{\\i1}", True),
+                ("", True),
+                ("{\\b1}", True),
+                ("", True),
+                ("{\\u1}", True),
+                ("", True),
+            ],
+        )
 
         # Test with position tags commonly used in SSA/ASS
         position_text = "{\\pos(400,570)}Positioned text"
         result = _split_by_formatting(position_text)
         self.assertEqual(
-            result, [("{\\pos(400,570)}", True), ("Positioned text", False)]
+            result,
+            [
+                ("", True),
+                ("{\\pos(400,570)}", True),
+                ("Positioned text", False),
+            ],
         )
 
     def test_update_substring(self):
@@ -224,13 +248,13 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
 
         # Test with multiple formatting tags
         complex_text = "{\\an8}Hello {\\i1}beautiful{\\i0} {\\b1}world{\\b0}"
-        updates = [(1, "Hi "), (3, "wonderful"), (5, " "), (7, "people")]
+        updates = [(2, "Hi "), (4, "wonderful"), (6, " "), (8, "people")]
         result = _update_substring(complex_text, updates)
         self.assertEqual(result, "{\\an8}Hi {\\i1}wonderful{\\i0} {\\b1}people{\\b0}")
 
         # Test with position tags
         position_text = "{\\pos(400,570)}Positioned text"
-        updates = [(1, "Modified text")]
+        updates = [(2, "Modified text")]
         result = _update_substring(position_text, updates)
         self.assertEqual(result, "{\\pos(400,570)}Modified text")
 
