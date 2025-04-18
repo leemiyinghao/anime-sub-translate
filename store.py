@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from logger import logger
-from subtitle_types import CharacterInfo, Metadata, TermBank
+from subtitle_types import CharacterInfo, Metadata, TermBank, TermBankItem
 
 
 class TermBankDTO(TermBank):
@@ -51,9 +51,16 @@ class MetadataDTO(BaseModel):
         )
 
 
+class OldContextItemDTO(BaseModel):
+    original: str
+    translated: str
+    description: Optional[str] = None
+
+
 class Store(BaseModel):
     term_bank: Optional[TermBankDTO] = None
     metadata: Optional[MetadataDTO] = None
+    context: Optional[list[OldContextItemDTO]] = None
 
     @classmethod
     def load_from_file(cls, path: str) -> "Store":
@@ -66,14 +73,26 @@ class Store(BaseModel):
         except Exception as e:
             logger.debug(f"Error loading pre-translate store: {e}")
 
+        # TODO: we might need a complete migration pattern if we change the schema very often
+        # migration
+        if not stored.term_bank and stored.context:
+            old_context = {}
+            for item in stored.context:
+                if item.original not in old_context:
+                    old_context[item.original] = TermBankItem(
+                        description=item.description, translated=item.translated
+                    )
+            stored.term_bank = TermBankDTO(context=old_context)
+            stored.context = None
         return stored
 
     def save_to_file(self, path: str) -> None:
         store_path = _find_pre_translate_store(path)
         os.makedirs(os.path.dirname(store_path), exist_ok=True)
+        self.context = None  # Clear context to avoid saving it
         try:
             with open(store_path, "w", encoding="utf-8") as file:
-                file.write(self.model_dump_json())
+                file.write(self.model_dump_json(exclude_none=True))
         except Exception as e:
             logger.error(f"Error saving pre-translate store: {e}")
             raise
