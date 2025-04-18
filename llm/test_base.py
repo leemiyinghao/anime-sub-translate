@@ -1,470 +1,165 @@
-import asyncio
-import json
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
-from setting import _Setting, set_setting
-from subtitle_types import PreTranslatedContext, SubtitleDialogue
+from subtitle_types import Dialogue, Metadata, TermBank, TermBankItem
 
-from .base import (
-    FailedAfterRetries,
-    _simple_sanity_check,
-    translate_context,
-    translate_dialogues,
+from llm.base import refine_context, translate_context, translate_dialogues
+from llm.dto import (
+    DialogueDTO,
+    MetadataDTO,
+    SubtitleDeltaDTO,
+    SubtitleDTO,
+    TermBankDTO,
+    TermBankItemDTO,
 )
-from .dto import (
-    PreTranslatedContextSetDTO,
-)
 
 
-class TestLLM(unittest.TestCase):
-    def setUp(self):
-        # Reduce retry wait time for tests
-        set_setting(_Setting(llm_retry_times=2, llm_retry_delay=0))
-
-    def test_simple_sanity_check_matching_ids(self):
-        # Test case where original and translated dialogues have the same IDs
-        original = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None),
-            SubtitleDialogue(id="2", content="World", actor=None, style=None),
-            SubtitleDialogue(id="3", content="Test", actor=None, style=None),
-        ]
-
-        translated = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
-            SubtitleDialogue(id="3", content="Prueba"),
-        ]
-
-        self.assertTrue(_simple_sanity_check(original, translated))
-
-    def test_simple_sanity_check_different_ids(self):
-        # Test case where original and translated dialogues have different IDs
-        original = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None),
-            SubtitleDialogue(id="2", content="World", actor=None, style=None),
-            SubtitleDialogue(id="3", content="Test", actor=None, style=None),
-        ]
-
-        translated = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
-            SubtitleDialogue(id="4", content="Prueba"),  # Different ID (4 instead of 3)
-        ]
-
-        self.assertFalse(_simple_sanity_check(original, translated))
-
-    def test_simple_sanity_check_missing_ids(self):
-        # Test case where translated dialogues are missing some IDs
-        original = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None),
-            SubtitleDialogue(id="2", content="World", actor=None, style=None),
-            SubtitleDialogue(id="3", content="Test", actor=None, style=None),
-        ]
-
-        translated = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="3", content="Prueba"),  # Missing ID 2
-        ]
-
-        self.assertFalse(_simple_sanity_check(original, translated))
-
-    def test_simple_sanity_check_extra_ids(self):
-        # Test case where translated dialogues have extra IDs
-        original = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None),
-            SubtitleDialogue(id="2", content="World", actor=None, style=None),
-        ]
-
-        translated = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
-            SubtitleDialogue(id="3", content="Extra"),  # Extra ID
-        ]
-
-        self.assertFalse(_simple_sanity_check(original, translated))
-
-    def test_simple_sanity_check_empty_inputs(self):
-        # Test case with empty inputs
-        original = []
-        translated = []
-
-        self.assertTrue(_simple_sanity_check(original, translated))
-
-    def test_simple_sanity_check_different_order(self):
-        # Test case where IDs are the same but in different order
-        original = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None),
-            SubtitleDialogue(id="2", content="World", actor=None, style=None),
-            SubtitleDialogue(id="3", content="Test", actor=None, style=None),
-        ]
-
-        translated = [
-            SubtitleDialogue(id="3", content="Prueba"),
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
-        ]
-
-        # This should pass since we're only checking if the sets of IDs match
-        self.assertTrue(_simple_sanity_check(original, translated))
-
-    @patch("llm.base._send_llm_request")
-    def test_translate_context_success(self, mock_send_llm_request):
-        # Setup mock response with a proper async generator function
-        async def mock_generator(*args, **kwargs):
-            response = json.dumps(
-                {
-                    "context": [
-                        {
-                            "original": "John",
-                            "translated": "John",
-                            "description": "Character name",
-                        },
-                        {
-                            "original": "Tokyo",
-                            "translated": "Tokio",
-                            "description": "City name",
-                        },
-                    ]
+class TestTranslateDialogues(unittest.IsolatedAsyncioTestCase):
+    @patch("llm.base.TranslateTask")
+    @patch("llm.base.TaskRequest")
+    async def test_translate_dialogues(self, mock_task_request, mock_translate_task):
+        # Define a mock implementation of the underlying task
+        async def _mock_translate_task_send() -> SubtitleDeltaDTO:
+            return SubtitleDeltaDTO(
+                dialogues={
+                    "0": "Translated: Hello",
+                    "1": "Translated: World",
                 }
             )
-            for char in response:
-                yield char
 
-        expected = [
-            PreTranslatedContext(
-                original="John", translated="John", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Tokyo", translated="Tokio", description="City name"
-            ),
-        ]
+        mock_task_request.return_value.send.side_effect = _mock_translate_task_send
 
-        # Reset the mock to avoid side effects from other tests
-        mock_send_llm_request.reset_mock()
-        mock_send_llm_request.side_effect = mock_generator
-
-        # Test data
+        # Prepare test data
         original_dialogues = [
-            SubtitleDialogue(
-                id="1", content="John went to Tokyo", actor=None, style=None
-            ),
-            SubtitleDialogue(
-                id="2", content="Tokyo is beautiful", actor=None, style=None
-            ),
+            Dialogue(id="0", content="Hello"),
+            Dialogue(id="1", content="World"),
         ]
-
-        # Run the test
-        result = asyncio.run(
-            translate_context(original=original_dialogues, target_language="Spanish")
+        target_language = "en"
+        pretranslate = TermBank(context={})
+        metadata = Metadata(
+            title="Test",
         )
 
-        # Verify results
-        self.assertEqual(len(result), 2)
-        self.assertEqual(
-            result,
-            expected,
+        # Call the function
+        translated_dialogues = await translate_dialogues(
+            original_dialogues, target_language, pretranslate, metadata
+        )
+        translated_dialogues = list(translated_dialogues)
+
+        # Assert the results
+        self.assertEqual(len(translated_dialogues), 2)
+        self.assertEqual(translated_dialogues[0].content, "Translated: Hello")
+        self.assertEqual(translated_dialogues[1].content, "Translated: World")
+        mock_task_request.assert_called_once_with(mock_translate_task.return_value)
+        mock_translate_task.assert_called_once_with(
+            dialogues=SubtitleDTO(
+                dialogues=[
+                    DialogueDTO(id="0", content="Hello"),
+                    DialogueDTO(id="1", content="World"),
+                ]
+            ),
+            target_language=target_language,
+            term_bank=None,
+            metadata=MetadataDTO.from_metadata(metadata),
+        )
+        mock_task_request.return_value.send.assert_called_once()
+
+
+class TestTranslateContext(unittest.IsolatedAsyncioTestCase):
+    @patch("llm.base.CollectTermBankTask")
+    @patch("llm.base.TaskRequest")
+    async def test_translate_context(
+        self, mock_task_request, mock_collect_term_bank_task
+    ):
+        async def _mock_collect_term_bank_task_send() -> TermBankDTO:
+            return TermBankDTO(
+                context={"Hello": TermBankItemDTO(translated="Bonjour", description="")}
+            )
+
+        mock_task_request.return_value.send.side_effect = (
+            _mock_collect_term_bank_task_send
         )
 
-        # Verify the mock was called with the right parameters
-        mock_send_llm_request.assert_called_once()
+        # Prepare test data
+        original_dialogues = [
+            Dialogue(id="0", content="Hello World"),
+            Dialogue(id="1", content="Hello Again"),
+        ]
+        target_language = "fr"
+        metadata = Metadata(title="Test")
+        limit = 100
 
-    @patch("llm.base._send_llm_request")
-    def test_translate_context_with_previous_translated(self, mock_send_llm_request):
-        # Setup mock response
-        async def mock_generator(*args, **kwargs):
-            response = json.dumps(
-                {
-                    "context": [
-                        {
-                            "original": "John",
-                            "translated": "John",
-                            "description": "Character name",
-                        },
-                        {
-                            "original": "Tokyo",
-                            "translated": "Tokio",
-                            "description": "City name",
-                        },
-                        {
-                            "original": "Sakura",
-                            "translated": "Sakura",
-                            "description": "Character name",
-                        },
-                    ]
+        # Call the function
+        term_bank = await translate_context(
+            original_dialogues, target_language, metadata, limit
+        )
+
+        # Assert the results
+        self.assertIsInstance(term_bank, TermBank)
+        self.assertIn("Hello", term_bank.context)
+        self.assertEqual(term_bank.context["Hello"].translated, "Bonjour")
+        mock_task_request.assert_called_once_with(
+            mock_collect_term_bank_task.return_value
+        )
+        mock_collect_term_bank_task.assert_called_once_with(
+            dialogues=SubtitleDTO(
+                dialogues=[
+                    DialogueDTO(id="0", content="Hello World"),
+                    DialogueDTO(id="1", content="Hello Again"),
+                ]
+            ),
+            metadata=MetadataDTO.from_metadata(metadata),
+            target_language=target_language,
+            char_limit=limit,
+        )
+        mock_task_request.return_value.send.assert_called_once()
+
+
+class TestRefineContext(unittest.IsolatedAsyncioTestCase):
+    @patch("llm.base.RefineTermBankTask")
+    @patch("llm.base.TaskRequest")
+    async def test_refine_context(self, mock_task_request, mock_refine_term_bank_task):
+        # Define a mock implementation of the underlying task
+        async def mock_refine_context_task_send() -> TermBankDTO:
+            return TermBankDTO(
+                context={
+                    "Hello": TermBankItemDTO(
+                        translated="Bonjour", description="Greeting"
+                    ),
+                    "World": TermBankItemDTO(translated="Monde", description="Earth"),
                 }
             )
-            for char in response:
-                yield char
 
-        # Reset the mock to avoid side effects from other tests
-        mock_send_llm_request.reset_mock()
-        mock_send_llm_request.side_effect = mock_generator
+        mock_task_request.return_value.send.side_effect = mock_refine_context_task_send
+        # Prepare test data
+        target_language = "fr"
+        contexts = TermBank(
+            context={"Hello": TermBankItem(translated="Bonjour", description="")}
+        )
+        metadata = Metadata(title="Test")
+        limit = 100
 
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(
-                id="1", content="John and Sakura went to Tokyo", actor=None, style=None
-            )
-        ]
-
-        previous_translated = [
-            PreTranslatedContext(
-                original="John", translated="John", description="Character name"
-            ),
-            PreTranslatedContext(
-                original="Tokyo", translated="Tokio", description="City name"
-            ),
-        ]
-
-        # Run the test
-        asyncio.run(
-            translate_context(
-                original=original_dialogues,
-                target_language="Spanish",
-                previous_translated=previous_translated,
-            )
+        # Call the function
+        refined_term_bank = await refine_context(
+            target_language, contexts, metadata, limit
         )
 
-        # Verify the mock was called with the right parameters
-        mock_send_llm_request.assert_called_once()
-        # Check that the system message includes instructions about previous context
-        _, kwargs = mock_send_llm_request.call_args
-        self.assertTrue(
-            any("previous context" in msg for msg in kwargs["instructions"])
+        # Assert the results
+        self.assertIsInstance(refined_term_bank, TermBank)
+        self.assertIn("Hello", refined_term_bank.context)
+        self.assertEqual(refined_term_bank.context["Hello"].description, "Greeting")
+        mock_task_request.assert_called_once_with(
+            mock_refine_term_bank_task.return_value
         )
-
-    @patch("llm.base._send_llm_request")
-    def test_translate_context_retry_on_error(self, mock_send_llm_request):
-        # Setup mock responses for first and second calls
-        call_count = 0
-
-        async def mock_generator(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise Exception("API Error")
-            else:
-                response = json.dumps(
-                    {"context": [{"original": "John", "translated": "John"}]}
-                )
-                for char in response:
-                    yield char
-
-        # Reset the mock for each call to avoid side effects
-        mock_send_llm_request.reset_mock()
-        mock_send_llm_request.side_effect = mock_generator
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello John", actor=None, style=None)
-        ]
-
-        # Run the test
-        with patch(
-            "asyncio.sleep", new_callable=AsyncMock
-        ):  # Mock sleep to speed up test
-            asyncio.run(
-                translate_context(
-                    original=original_dialogues, target_language="Spanish"
-                )
-            )
-
-        # Verify the mock was called twice (initial failure + retry)
-        self.assertEqual(mock_send_llm_request.call_count, 2)
-
-    @patch("llm.base._send_llm_request")
-    def test_translate_dialouges_success(self, mock_send_llm_request):
-        # Setup mock response
-        async def mock_generator(*args, **kwargs):
-            response = json.dumps(
-                {"translated": {"1": "Hola", "2": "Mundo", "3": "Prueba"}}
-            )
-            for char in response:
-                yield char
-
-        mock_send_llm_request.return_value = mock_generator()
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None),
-            SubtitleDialogue(id="2", content="World", actor=None, style=None),
-            SubtitleDialogue(id="3", content="Test", actor=None, style=None),
-        ]
-
-        expected = [
-            SubtitleDialogue(id="1", content="Hola"),
-            SubtitleDialogue(id="2", content="Mundo"),
-            SubtitleDialogue(id="3", content="Prueba"),
-        ]
-
-        # Run the test
-        result = list(
-            asyncio.run(
-                translate_dialogues(
-                    original=original_dialogues, target_language="Spanish"
-                )
-            )
-        )
-
-        # Verify results
-        self.assertEqual(result, expected)
-
-        # Verify the mock was called with the right parameters
-        mock_send_llm_request.assert_called_once()
-        args, kwargs = mock_send_llm_request.call_args
-        # Check that Spanish is in one of the instructions
-        self.assertTrue(
-            any("Spanish" in instruction for instruction in kwargs["instructions"])
-        )
-
-    @patch("llm.base._send_llm_request")
-    def test_translate_dialouges_with_pretranslate(self, mock_send_llm_request):
-        # Setup mock response
-        async def mock_generator(*args, **kwargs):
-            response = json.dumps(
-                {"translated": {"1": "Hola John", "2": "Bienvenido a Madrid"}}
-            )
-            for char in response:
-                yield char
-
-        mock_send_llm_request.return_value = mock_generator()
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello John", actor=None, style=None),
-            SubtitleDialogue(
-                id="2", content="Welcome to Madrid", actor=None, style=None
+        mock_refine_term_bank_task.assert_called_once_with(
+            term_bank=TermBankDTO(
+                context={"Hello": TermBankItemDTO(translated="Bonjour", description="")}
             ),
-        ]
-
-        pretranslate_context = [
-            PreTranslatedContext(
-                original="John", translated="John", description="Name"
-            ),
-            PreTranslatedContext(
-                original="Madrid", translated="Madrid", description="City"
-            ),
-        ]
-
-        expected = [
-            SubtitleDialogue(id="1", content="Hola John"),
-            SubtitleDialogue(id="2", content="Bienvenido a Madrid"),
-        ]
-
-        # Run the test
-        result = list(
-            asyncio.run(
-                translate_dialogues(
-                    original=original_dialogues,
-                    target_language="Spanish",
-                    pretranslate=pretranslate_context,
-                )
-            )
+            metadata=MetadataDTO.from_metadata(metadata),
+            target_language=target_language,
+            char_limit=limit,
         )
-
-        # Verify results
-        self.assertEqual(result, expected)
-
-        # Verify pretranslate was passed to the function
-        mock_send_llm_request.assert_called_once()
-        _, kwargs = mock_send_llm_request.call_args
-        pretranslate_arg: PreTranslatedContextSetDTO = kwargs["pretranslate"]
-        self.assertEqual(pretranslate_arg.to_contexts(), pretranslate_context)
-
-    @patch("llm.base._send_llm_request")
-    def test_translate_dialouges_retry_on_error(self, mock_send_llm_request):
-        # Setup mock responses
-        call_count = 0
-
-        async def mock_generator_with_retry(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise Exception("API Error")
-
-            response = json.dumps({"translated": {"1": "Hola"}})
-            for char in response:
-                yield char
-
-        # Reset the mock to avoid side effects from other tests
-        mock_send_llm_request.reset_mock()
-        mock_send_llm_request.side_effect = mock_generator_with_retry
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None)
-        ]
-        expected = [
-            SubtitleDialogue(id="1", content="Hola"),
-        ]
-
-        # Run the test
-        with patch(
-            "asyncio.sleep", new_callable=AsyncMock
-        ):  # Mock sleep to speed up test
-            result = list(
-                asyncio.run(
-                    translate_dialogues(
-                        original=original_dialogues, target_language="Spanish"
-                    )
-                )
-            )
-
-        # Verify results
-        self.assertEqual(result, expected)
-
-        # Verify the mock was called twice (initial failure + retry)
-        self.assertEqual(mock_send_llm_request.call_count, 2)
-
-    @patch("llm.base._send_llm_request")
-    def test_translate_dialouges_failed_after_retries_send_llm_request(
-        self, mock_send_llm_request
-    ):
-        # Setup mock response to always fail
-        async def mock_generator(*args, **kwargs):
-            raise Exception("API Error")
-
-        mock_send_llm_request.return_value = mock_generator()
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None)
-        ]
-
-        # Run the test and expect a FailedAfterRetries exception
-        with self.assertRaises(FailedAfterRetries):
-            asyncio.run(
-                translate_dialogues(
-                    original=original_dialogues, target_language="Spanish"
-                )
-            )
-
-    @patch("llm.base._send_llm_request")
-    @patch("llm.base._simple_sanity_check")
-    def test_translate_dialogues_failed_after_retries_sanity_check(
-        self, mock_sanity_check, mock_send_llm_request
-    ):
-        # Setup mock response
-        async def mock_generator(*args, **kwargs):
-            response = json.dumps({"translated": {"1": "Hola", "2": "Mundo"}})
-            for char in response:
-                yield char
-
-        mock_sanity_check.return_value = False
-        mock_send_llm_request.return_value = mock_generator()
-
-        # Test data
-        original_dialogues = [
-            SubtitleDialogue(id="1", content="Hello", actor=None, style=None)
-        ]
-
-        with self.assertRaises(FailedAfterRetries):
-            asyncio.run(
-                translate_dialogues(
-                    original=original_dialogues, target_language="Spanish"
-                )
-            )
+        mock_task_request.return_value.send.assert_called_once()
 
 
 if __name__ == "__main__":
