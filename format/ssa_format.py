@@ -86,13 +86,20 @@ class SubtitleFormatSSA(SubtitleFormat):
                 if _id >= len(self._raw_format) or _id < 0:
                     raise IndexError("Subtitle ID out of range")
                 # Replace new lines with \N in the SSA format
-                self._raw_format[_id].text = re.sub(
-                    r"\n",
-                    r"\\N",
-                    _update_substring(
-                        self._raw_format[_id].text, [(_sid, new_subtitle.content)]
-                    ),
-                )
+                try:
+                    self._raw_format[_id].text = re.sub(
+                        r"\n",
+                        r"\\N",
+                        _update_substring(
+                            self._raw_format[_id].text, [(_sid, new_subtitle.content)]
+                        ),
+                    )
+                except Exception as e:
+                    logger.debug(f"Error updating subtitle: {e}")
+                    logger.debug(f"Subtitle ID: {_id}, SID: {_sid}")
+                    logger.debug(f"Original text: {self._raw_format[_id].text}")
+                    logger.debug(f"New text: {new_subtitle.content}")
+                    raise
 
     def update_title(self, title: str) -> None:
         """
