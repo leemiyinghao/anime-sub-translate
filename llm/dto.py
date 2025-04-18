@@ -3,7 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import Annotated, Dict, Iterable, List, Type, TypeVar
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import AfterValidator, BaseModel, BeforeValidator
 from subtitle_types import (
     CharacterInfo,
     Dialogue,
@@ -234,8 +234,17 @@ class PreTranslatedContextSetResponseDTO(PreTranslatedContextSetDTO, PromptedDTO
         return """Provide improtant translation context note as format `{"context":[{"original":"{term in source language}","translated":"{translated term}","description":"{condiction to apply this translation, or basic information and persoality of a character. optional}"}]}`"""
 
 
+def _context_filter(
+    context: dict[str, "TermBankItemDTO"],
+) -> dict[str, "TermBankItemDTO"]:
+    """
+    Filters the context to remove empty or unnecessary items.
+    """
+    return {k: v for k, v in context.items() if v.translated and (v.translated != k)}
+
+
 class TermBankDTO(BaseModel):
-    context: dict[str, "TermBankItemDTO"]
+    context: Annotated[dict[str, "TermBankItemDTO"], AfterValidator(_context_filter)]
 
     @classmethod
     def from_term_bank(cls, term_bank: TermBank) -> "TermBankDTO":

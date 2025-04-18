@@ -11,24 +11,6 @@ from .dto import (
 from .utils import clear_indentation
 
 
-def term_bank_sanity_check(response: TermBankDTO) -> bool:
-    """
-    Performs a sanity check on the response.
-    :param response: The response DTO to check.
-    :return: True if the response is valid, False otherwise.
-    """
-    valid = True
-    for key, value in response.context.items():
-        if key == value.translated:
-            valid = False
-            break
-        if key == "" or value.translated == "":
-            valid = False
-            break
-
-    return valid
-
-
 class CollectTermBankTask(
     NormalCharLimitTrait,
     ReasoningMessageTrait,
@@ -107,7 +89,7 @@ class CollectTermBankTask(
         )
 
     def sanity_check(self, response: TermBankDTO) -> bool:
-        return term_bank_sanity_check(response)
+        return True
 
 
 class RefineTermBankTask(
@@ -185,4 +167,4 @@ class RefineTermBankTask(
         """)
 
     def sanity_check(self, response: TermBankDTO) -> bool:
-        return term_bank_sanity_check(response)
+        return True

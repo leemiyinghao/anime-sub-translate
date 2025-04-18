@@ -2,45 +2,11 @@ import unittest
 
 from subtitle_types import Dialogue
 
-from llm.dto import Metadata, MetadataDTO, SubtitleDTO, TermBankDTO, TermBankItemDTO
+from llm.dto import SubtitleDTO, TermBankDTO, TermBankItemDTO
 from llm.term_bank_task import (
     CollectTermBankTask,
     RefineTermBankTask,
-    term_bank_sanity_check,
 )
-
-
-class TestTermBankSanityCheck(unittest.TestCase):
-    def test_term_bank_sanity_check_valid(self):
-        term_bank = TermBankDTO(
-            context={
-                "term1": TermBankItemDTO(translated="translated1", description="desc1"),
-                "term2": TermBankItemDTO(translated="translated2", description="desc2"),
-            }
-        )
-        self.assertTrue(term_bank_sanity_check(term_bank))
-
-    def test_term_bank_sanity_check_invalid_empty_term(self):
-        term_bank = TermBankDTO(
-            context={"": TermBankItemDTO(translated="translated1", description="desc1")}
-        )
-        self.assertFalse(term_bank_sanity_check(term_bank))
-
-    def test_term_bank_sanity_check_invalid_empty_translation(self):
-        term_bank = TermBankDTO(
-            context={"term1": TermBankItemDTO(translated="", description="desc1")}
-        )
-        self.assertFalse(term_bank_sanity_check(term_bank))
-
-    def test_term_bank_sanity_check_invalid_same_term_and_translation(self):
-        term_bank = TermBankDTO(
-            context={"term1": TermBankItemDTO(translated="term1", description="desc1")}
-        )
-        self.assertFalse(term_bank_sanity_check(term_bank))
-
-    def test_term_bank_sanity_check_empty_context(self):
-        term_bank = TermBankDTO(context={})
-        self.assertTrue(term_bank_sanity_check(term_bank))
 
 
 class TestCollectTermBankTask(unittest.TestCase):
