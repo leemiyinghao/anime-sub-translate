@@ -111,11 +111,11 @@ async def translate_file(
             )
         translated_chunk_group: list[list[Dialogue]] = await asyncio.gather(*tasks)
         if get_setting().debug:
-            logger.info("Translated chunk:")
+            logger.debug("Translated chunk:")
             for idx, dialogue in enumerate(
                 [dialogue for _chunk in translated_chunk_group for dialogue in _chunk]
             ):
-                logger.info(f"  {idx}: {dialogue.content}")
+                logger.debug(f"  {idx}: {dialogue.content}")
         translated_dialogues.extend(translated_chunk_group)
     for translated_chunk, id_map in zip(translated_dialogues, id_maps):
         # reverse remap dialogues ids
