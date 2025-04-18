@@ -103,6 +103,7 @@ class TaskRequest(Generic[ResponseDTO]):
             self._task._response_dto,
             final_message,
         )
+        logger.debug(f"Final message: {final_message}")
         if not self._task.sanity_check(result):
             raise Exception("Invalid response from LLM.")
         try:
@@ -141,10 +142,13 @@ class TaskRequest(Generic[ResponseDTO]):
         model = get_setting().llm_model
         current_progress().set_total(self._task.char_limit())
         current_progress().reset()
+        extra_prompts: list[LiteLLMMessage] = []
+        if _prompt := get_setting().llm_extra_prompt:
+            extra_prompts.append(LiteLLMMessage(role="system", content=_prompt))
         response = await litellm.acompletion(
             n=1,
             model=model,
-            messages=self._task.messages(),
+            messages=self._task.messages() + extra_prompts,
             stream=True,
             temperature=0.9,
         )
