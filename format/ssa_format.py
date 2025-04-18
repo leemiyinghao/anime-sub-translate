@@ -56,7 +56,7 @@ class SubtitleFormatSSA(SubtitleFormat):
                 [
                     (idx, sidx, text)
                     for sidx, (text, is_formatting) in enumerate(
-                        _split_by_formatting(subtitle.text)
+                        _split_by_formatting(re.sub(r"\\+N", "\n", subtitle.text))
                     )
                     if not is_formatting
                 ]
@@ -66,7 +66,6 @@ class SubtitleFormatSSA(SubtitleFormat):
 
         for id_pairs, text in deduplicated_sections:
             # Create a new SubtitleDialogue object for each deduplicated section
-            text = re.sub(r"\\+N", "\n", text)
             yield Dialogue(
                 id=_serialize_id(id_pairs),
                 content=text,
