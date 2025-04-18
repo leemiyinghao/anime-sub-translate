@@ -157,9 +157,9 @@ class TaskRequest(Generic[ResponseDTO]):
             if isinstance(message, str):
                 reasoning += message
             else:
+                logger.debug(f"Reasoning: {reasoning}")
                 return message
 
-        logger.debug(f"Reasoning: {reasoning}")
         raise Exception("No vaild response from LLM.")
 
 
