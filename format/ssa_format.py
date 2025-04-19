@@ -107,6 +107,7 @@ class SSAFileWrapper:
         _sectioned_events = [
             (idx, _sectioned_event)
             for idx, _sectioned_event in enumerate(self._sections)
+            if _sectioned_event._raw.is_text
         ]
         _sectioned_events.sort(key=lambda x: x[1].start)
         return _sectioned_events
