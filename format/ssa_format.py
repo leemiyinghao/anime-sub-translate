@@ -2,8 +2,7 @@ import re
 from collections import OrderedDict
 from typing import Iterable, Mapping, Optional
 
-from logger import logger
-from pysubs2 import SSAFile
+from pysubs2 import SSAEvent, SSAFile
 from subtitle_types import Dialogue
 
 from .format import SubtitleFormat
@@ -13,13 +12,164 @@ IdPair = tuple[int, int]
 ComplexSection = tuple[list[IdPair], str]
 
 
+class SectionedEvent:
+    _sections: list[tuple[str, bool]]
+    _raw: SSAEvent
+    _dirty: bool = False
+
+    def __init__(self, raw: SSAEvent) -> None:
+        """
+        Initializes the SectionedEvent object with the given SSAEvent.
+        :param raw: The SSAEvent object to be initialized.
+        """
+        self._raw = raw
+        self._sections = _split_by_formatting(raw.text)
+        self._dirty = False
+
+    @property
+    def dirty(self) -> bool:
+        """
+        Returns True if the sections have been modified.
+        :return: True if the sections have been modified, False otherwise.
+        """
+        return self._dirty
+
+    def set_text(self, idx: int, text: str) -> None:
+        """
+        Sets the text of the section at the given index.
+        :param idx: The index of the section to be set.
+        :param text: The text to be set.
+        """
+        if idx >= len(self._sections) or idx < 0:
+            raise IndexError("Index out of range")
+        self._sections[idx] = (text, False)
+        self._dirty = True
+
+    def get_text(self, flush: bool = False) -> str:
+        if flush:
+            self._dirty = False
+        return "".join([s for s, _ in self._sections])
+
+    def get_sections(self) -> list[tuple[int, str, bool]]:
+        """
+        Returns the sections of the dialogue.
+        :return: The sections of the dialogue.
+        """
+        return [(idx, s, i) for idx, (s, i) in enumerate(self._sections)]
+
+    def __getitem__(self, idx: int) -> tuple[str, bool]:
+        """
+        Returns the section at the given index.
+        :param idx: The index of the section to be returned.
+        :return: The section at the given index.
+        """
+        if idx >= len(self._sections) or idx < 0:
+            raise IndexError("Index out of range")
+        return self._sections[idx]
+
+    def __len__(self) -> int:
+        """
+        Returns the length of the sections.
+        :return: The length of the sections.
+        """
+        return len(self._sections)
+
+    def __getattr__(self, item: str):
+        """
+        Return attribute of self, or self._raw if not found.
+        :param item: The name of the attribute to be returned.
+        :return: The value of the attribute.
+        """
+        if item in self.__dict__:
+            return self.__dict__[item]
+        return getattr(self._raw, item)
+
+
+class SSAFileWrapper:
+    _inner: SSAFile
+    _sections: list[SectionedEvent]
+
+    def __init__(self, raw: SSAFile) -> None:
+        self._set_inner(raw)
+
+    def _set_inner(self, raw: SSAFile) -> None:
+        """
+        Sets the raw text of the subtitle file.
+        :param raw: The raw text of the subtitle file.
+        """
+        self._inner = raw
+        self._sections = [SectionedEvent(event) for event in self._inner]
+
+    def get_sections(self) -> list[tuple[int, SectionedEvent]]:
+        """
+        Returns the sections of the subtitle file.
+        """
+        _sectioned_events = [
+            (idx, _sectioned_event)
+            for idx, _sectioned_event in enumerate(self._sections)
+        ]
+        _sectioned_events.sort(key=lambda x: x[1].start)
+        return _sectioned_events
+
+    def __getitem__(self, idx: int) -> SectionedEvent:
+        """
+        Returns the section at the given index.
+        :param idx: The index of the section to be returned.
+        :return: The section at the given index.
+        """
+        if idx >= len(self._sections) or idx < 0:
+            raise IndexError("Subtitle ID out of range")
+        return self._sections[idx]
+
+    def __len__(self) -> int:
+        """
+        Returns the length of the sections.
+        :return: The length of the sections.
+        """
+        return len(self._sections)
+
+    def update_section(self, section: Section):
+        """
+        Updates the section of the subtitle file.
+        :param section: The section to be updated.
+        """
+        idx, sid, text = section
+        if idx >= len(self._sections) or idx < 0:
+            raise IndexError("Subtitle ID out of range")
+        self._sections[idx].set_text(sid, text)
+
+    def flush(self) -> None:
+        """
+        Flushes the changes made to the sections of the subtitle file.
+        """
+        for idx, section in enumerate(self._sections):
+            if not section.dirty:
+                continue
+            # Update the text of the section
+            self._inner[idx].text = section.get_text(flush=True)
+
+    def to_string(self, format: str, encoding: str) -> str:
+        self.flush()
+        return self._inner.to_string(format, encoding=encoding)
+
+    def __getattr__(self, item: str):
+        """
+        Return attribute of self, or self._raw if not found.
+        :param item: The name of the attribute to be returned.
+        :return: The value of the attribute.
+        """
+        if item in self.__dict__:
+            return self.__dict__[item]
+        return getattr(self._inner, item)
+
+
 class SubtitleFormatSSA(SubtitleFormat):
     """
     SubtitleFormatSSA is a class that represents the SSA subtitle format.
     It contains methods to parse and write subtitle files in the SSA format.
     """
 
-    _raw_format: SSAFile
+    _raw_format: SSAFileWrapper
     _dialogues: Mapping[str, Dialogue]
 
     def init_subtitle(self) -> None:
@@ -27,7 +177,9 @@ class SubtitleFormatSSA(SubtitleFormat):
         Initializes the subtitle with the raw text.
         :param raw: The raw text of the subtitle file.
         """
-        self._raw_format = SSAFile.from_string(self.raw, encoding="utf-8")
+        self._raw_format = SSAFileWrapper(
+            SSAFile.from_string(self.raw, encoding="utf-8")
+        )
 
     @classmethod
     def match(cls, filename: str) -> bool:
@@ -45,30 +197,19 @@ class SubtitleFormatSSA(SubtitleFormat):
         :return: A string representation of the dialogue in the SSA format, split by new lines.
         """
         # Sort the subtitles by start time
-        sorted_subtitles = filter(
-            lambda x: x[1].is_text,
-            sorted(enumerate(self._raw_format), key=lambda x: x[1].start),
-        )
-        sections: list[Section] = []
-        for idx, subtitle in sorted_subtitles:
-            # Split the subtitle text by formatting
-            sections.extend(
-                [
-                    (idx, sidx, text)
-                    for sidx, (text, is_formatting) in enumerate(
-                        _split_by_formatting(re.sub(r"\\+N", "\n", subtitle.text))
-                    )
-                    if not is_formatting
-                ]
-            )
-        # Deduplicate the dialogues
-        deduplicated_sections = _backward_dedpulicate(sections, range=16)
+        sections = [
+            (idx, sid, inner_section_text)
+            for idx, outer_section in self._raw_format.get_sections()
+            for sid, inner_section_text, is_formatting in outer_section.get_sections()
+            if not is_formatting
+        ]
+        sections = _backward_dedpulicate(sections, range=16)
 
-        for id_pairs, text in deduplicated_sections:
+        for id_pairs, text in sections:
             # Create a new SubtitleDialogue object for each deduplicated section
             yield Dialogue(
                 id=_serialize_id(id_pairs),
-                content=text,
+                content=re.sub(r"\\+N", "\n", text),
                 actor=self._raw_format[id_pairs[0][0]].name or None,
                 style=self._raw_format[id_pairs[0][0]].style or None,
             )
@@ -78,32 +219,11 @@ class SubtitleFormatSSA(SubtitleFormat):
         Updates the raw text of the subtitle file by replacing the content of the subtitles.
         :param subtitleDialogues: The generator of SubtitleDialogue objects.
         """
-        old_subtitle = [re.sub(r"\\+N", "\n", i.text) for i in self._raw_format]
         for new_subtitle in subtitle_dialogues:
-            # Update the content of the subtitle
-            _id_pairs = _deserialize_id(new_subtitle.id)
-            for _id, _sid in _id_pairs:
-                if _id >= len(self._raw_format) or _id < 0:
-                    raise IndexError("Subtitle ID out of range")
-                # Replace new lines with \N in the SSA format
-                try:
-                    old_subtitle[_id] = re.sub(
-                        r"\n",
-                        r"\\N",
-                        _update_substring(
-                            old_subtitle[_id], [(_sid, new_subtitle.content)]
-                        ),
-                    )
-                except Exception as e:
-                    logger.debug(f"Error updating subtitle: {e}")
-                    logger.debug(f"Subtitle ID: {_id}, SID: {_sid}")
-                    logger.debug(f"Original text: {self._raw_format[_id].text}")
-                    logger.debug(f"New text: {new_subtitle.content}")
-                    raise
-        # Update the raw text of the subtitle file
-        for idx, subtitle in enumerate(old_subtitle):
-            # Update the text of the subtitle
-            self._raw_format[idx].text = subtitle
+            for idx, sid in _deserialize_id(new_subtitle.id):
+                self._raw_format.update_section(
+                    (idx, sid, re.sub("\n", r"\\N", new_subtitle.content))
+                )
 
     def update_title(self, title: str) -> None:
         """
@@ -174,29 +294,12 @@ def _split_by_formatting(content: str) -> list[tuple[str, bool]]:
         step = end
     sections.append((content[step:], False))
 
-    # Mark empty as formatting, otherwise we might lost section when update is partial applied.
-    sections = [(s, i or len(s) == 0) for s, i in sections]
+    # Remove empty sections
+    sections = [(s, i) for s, i in sections if len(s) > 0]
 
     sections = sections
 
     return sections
-
-
-def _update_substring(old: str, new: Iterable[tuple[int, str]]) -> str:
-    """
-    Replaces the old substring with the new substring in the raw text of the subtitle file.
-    :param old: The old substring to be replaced.
-    :param new: The new substring to replace the old one.
-    :return: The raw text with the substring replaced.
-    """
-    sections = [c for c, _ in _split_by_formatting(old)]
-    for idx, replacement in new:
-        if idx >= len(sections) or idx < 0:
-            logger.exception(f"Index out of range: {idx}/{len(sections)}, {sections}")
-            raise IndexError("Index out of range")
-        sections[idx] = replacement
-
-    return "".join(sections)
 
 
 def _backward_dedpulicate(

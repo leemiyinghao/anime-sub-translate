@@ -3,16 +3,343 @@ import tempfile
 import unittest
 
 from parameterized import parameterized
+from pysubs2 import SSAEvent, SSAFile
 from subtitle_types import Dialogue
 
 from format.ssa_format import (
+    SectionedEvent,
+    SSAFileWrapper,
     SubtitleFormatSSA,
     _backward_dedpulicate,
     _deserialize_id,
     _serialize_id,
     _split_by_formatting,
-    _update_substring,
 )
+
+
+class TestSectionedEvent(unittest.TestCase):
+    def setUp(self):
+        # Create sample SSAEvents for testing
+        self.event_simple = SSAEvent(start=1000, end=5000, text="Hello, world!")
+        self.event_formatted = SSAEvent(
+            start=6000,
+            end=10000,
+            text="This is {\\i1}italic{\\i0} text.",
+        )
+        self.event_complex = SSAEvent(
+            start=11000,
+            end=15000,
+            text="{\\pos(1,2)}Complex {\\b1}bold {\\i1}and italic{\\i0}{\\b0} example.",
+        )
+
+        # Initialize SectionedEvent instances
+        self.sectioned_simple = SectionedEvent(self.event_simple)
+        self.sectioned_formatted = SectionedEvent(self.event_formatted)
+        self.sectioned_complex = SectionedEvent(self.event_complex)
+
+    def test_initialization(self):
+        """Test SectionedEvent initialization and section splitting."""
+        self.assertEqual(self.sectioned_simple._raw, self.event_simple)
+        self.assertEqual(self.sectioned_simple._sections, [("Hello, world!", False)])
+        self.assertFalse(self.sectioned_simple.dirty)
+
+        self.assertEqual(self.sectioned_formatted._raw, self.event_formatted)
+        self.assertEqual(
+            self.sectioned_formatted._sections,
+            [
+                ("This is ", False),
+                ("{\\i1}", True),
+                ("italic", False),
+                ("{\\i0}", True),
+                (" text.", False),
+            ],
+        )
+        self.assertFalse(self.sectioned_formatted.dirty)
+
+        self.assertEqual(self.sectioned_complex._raw, self.event_complex)
+        self.assertEqual(
+            self.sectioned_complex._sections,
+            [
+                ("{\\pos(1,2)}", True),
+                ("Complex ", False),
+                ("{\\b1}", True),
+                ("bold ", False),
+                ("{\\i1}", True),
+                ("and italic", False),
+                ("{\\i0}", True),
+                ("{\\b0}", True),
+                (" example.", False),
+            ],
+        )
+        self.assertFalse(self.sectioned_complex.dirty)
+
+    def test_dirty_property(self):
+        """Test the dirty property."""
+        self.assertFalse(self.sectioned_simple.dirty)
+        self.sectioned_simple.set_text(0, "New text")
+        self.assertTrue(self.sectioned_simple.dirty)
+
+    def test_set_text(self):
+        """Test setting text for a section."""
+        self.sectioned_formatted.set_text(2, "ITALIC")
+        self.assertEqual(self.sectioned_formatted._sections[2], ("ITALIC", False))
+        self.assertTrue(self.sectioned_formatted.dirty)
+
+        # Test setting text for a formatting section (should still work)
+        self.sectioned_formatted.set_text(1, "{\\b1}")
+        self.assertEqual(
+            self.sectioned_formatted._sections[1], ("{\\b1}", False)
+        )  # Note: is_formatting becomes False
+
+    def test_set_text_index_out_of_range(self):
+        """Test setting text with an invalid index."""
+        with self.assertRaises(IndexError):
+            self.sectioned_simple.set_text(1, "Error")
+        with self.assertRaises(IndexError):
+            self.sectioned_simple.set_text(-1, "Error")
+
+    def test_get_text(self):
+        """Test getting the combined text."""
+        self.assertEqual(
+            self.sectioned_formatted.get_text(),
+            "This is {\\i1}italic{\\i0} text.",
+        )
+        self.sectioned_formatted.set_text(2, "ITALIC")
+        self.assertEqual(
+            self.sectioned_formatted.get_text(),
+            "This is {\\i1}ITALIC{\\i0} text.",
+        )
+
+    def test_get_text_with_flush(self):
+        """Test getting text and flushing the dirty flag."""
+        self.sectioned_formatted.set_text(2, "ITALIC")
+        self.assertTrue(self.sectioned_formatted.dirty)
+        text = self.sectioned_formatted.get_text(flush=True)
+        self.assertEqual(text, "This is {\\i1}ITALIC{\\i0} text.")
+        self.assertFalse(self.sectioned_formatted.dirty)
+
+    def test_get_sections(self):
+        """Test getting the sections with indices."""
+        expected_sections = [
+            (0, "This is ", False),
+            (1, "{\\i1}", True),
+            (2, "italic", False),
+            (3, "{\\i0}", True),
+            (4, " text.", False),
+        ]
+        self.assertEqual(self.sectioned_formatted.get_sections(), expected_sections)
+
+        # Test after modification
+        self.sectioned_formatted.set_text(2, "ITALIC")
+        expected_modified_sections = [
+            (0, "This is ", False),
+            (1, "{\\i1}", True),
+            (2, "ITALIC", False),  # Content changed, is_formatting is False now
+            (3, "{\\i0}", True),
+            (4, " text.", False),
+        ]
+        self.assertEqual(
+            self.sectioned_formatted.get_sections(), expected_modified_sections
+        )
+
+    def test_getitem(self):
+        """Test accessing sections using index."""
+        self.assertEqual(self.sectioned_formatted[0], ("This is ", False))
+        self.assertEqual(self.sectioned_formatted[1], ("{\\i1}", True))
+        self.assertEqual(self.sectioned_formatted[2], ("italic", False))
+
+    def test_getitem_index_out_of_range(self):
+        """Test accessing sections with an invalid index."""
+        with self.assertRaises(IndexError):
+            _ = self.sectioned_simple[1]
+        with self.assertRaises(IndexError):
+            _ = self.sectioned_simple[-1]
+
+    def test_len(self):
+        """Test the length of the sections."""
+        self.assertEqual(len(self.sectioned_simple), 1)
+        self.assertEqual(len(self.sectioned_formatted), 5)
+        self.assertEqual(len(self.sectioned_complex), 9)
+
+    def test_getattr(self):
+        """Test accessing attributes of the underlying SSAEvent."""
+        self.assertEqual(self.sectioned_simple.start, 1000)
+        self.assertEqual(self.sectioned_simple.end, 5000)
+        self.assertEqual(
+            self.sectioned_simple.text, "Hello, world!"
+        )  # Accesses original text
+        self.assertEqual(self.sectioned_formatted.style, "Default")  # Default value
+
+        # Test accessing an attribute that doesn't exist on SSAEvent
+        with self.assertRaises(AttributeError):
+            _ = self.sectioned_simple.non_existent_attribute
+
+
+class TestSSAFileWrapper(unittest.TestCase):
+    def setUp(self):
+        # Create a sample SSAFile for testing
+        self.ssa_file = SSAFile()
+        self.ssa_file.info["Title"] = "Test Title"
+        # Ensure a default style exists and is copied to avoid modifying the global default
+        if "Default" not in self.ssa_file.styles:
+            self.ssa_file.styles["Default"] = SSAFile.DEFAULT_STYLE.copy()  # type: ignore
+        else:
+            self.ssa_file.styles["Default"] = self.ssa_file.styles["Default"].copy()
+
+        self.event1 = SSAEvent(start=1000, end=5000, text="First line.")
+        self.event2 = SSAEvent(start=6000, end=10000, text="Second {\\i1}line{\\i0}.")
+        self.event3 = SSAEvent(
+            start=0, end=500, text="Early line."
+        )  # To test sorting in get_sections
+        self.ssa_file.append(self.event1)
+        self.ssa_file.append(self.event2)
+        self.ssa_file.append(self.event3)  # Appended last, but starts earliest
+
+        # Initialize SSAFileWrapper
+        self.wrapper = SSAFileWrapper(self.ssa_file)
+
+    def test_initialization(self):
+        """Test SSAFileWrapper initialization."""
+        self.assertIsInstance(self.wrapper._inner, SSAFile)
+        self.assertEqual(len(self.wrapper._sections), 3)
+        self.assertIsInstance(self.wrapper._sections[0], SectionedEvent)
+        self.assertIsInstance(self.wrapper._sections[1], SectionedEvent)
+        self.assertIsInstance(self.wrapper._sections[2], SectionedEvent)
+        # Check if SectionedEvents were created correctly
+        self.assertEqual(self.wrapper._sections[0]._raw, self.event1)
+        self.assertEqual(self.wrapper._sections[1]._raw, self.event2)
+        self.assertEqual(self.wrapper._sections[2]._raw, self.event3)
+
+    def test_get_sections(self):
+        """Test getting sections, ensuring they are sorted by start time."""
+        sections = self.wrapper.get_sections()
+        self.assertEqual(len(sections), 3)
+        # Check the order based on the original event start times
+        self.assertEqual(sections[0][0], 2)  # Index of event3 (starts at 0)
+        self.assertEqual(sections[0][1]._raw, self.event3)
+        self.assertEqual(sections[1][0], 0)  # Index of event1 (starts at 1000)
+        self.assertEqual(sections[1][1]._raw, self.event1)
+        self.assertEqual(sections[2][0], 1)  # Index of event2 (starts at 6000)
+        self.assertEqual(sections[2][1]._raw, self.event2)
+
+    def test_getitem(self):
+        """Test accessing sections using index."""
+        self.assertIsInstance(self.wrapper[0], SectionedEvent)
+        self.assertEqual(self.wrapper[0]._raw, self.event1)
+        self.assertEqual(self.wrapper[1]._raw, self.event2)
+        self.assertEqual(self.wrapper[2]._raw, self.event3)
+
+    def test_getitem_index_out_of_range(self):
+        """Test accessing sections with an invalid index."""
+        with self.assertRaisesRegex(IndexError, "Subtitle ID out of range"):
+            _ = self.wrapper[3]
+        with self.assertRaisesRegex(IndexError, "Subtitle ID out of range"):
+            _ = self.wrapper[-1]  # Negative index is invalid here
+
+    def test_len(self):
+        """Test the length of the wrapper."""
+        self.assertEqual(len(self.wrapper), 3)
+
+    def test_update_section(self):
+        """Test updating a text section within an event."""
+        # Update the first text part of the second event (index 1, section index 0)
+        # Event 2 text: "Second {\\i1}line{\\i0}." -> sections: [("Second ", False), ("{\\i1}", True), ("line", False), ("{\\i0}", True), (".", False)]
+        self.wrapper.update_section((1, 0, "Modified second "))
+        sectioned_event = self.wrapper[1]
+        self.assertTrue(sectioned_event.dirty)
+        self.assertEqual(sectioned_event._sections[0], ("Modified second ", False))
+        # Check original raw event text is not yet modified
+        self.assertEqual(self.wrapper._inner[1].text, "Second {\\i1}line{\\i0}.")
+
+    def test_update_section_invalid_event_index(self):
+        """Test updating with an invalid event index."""
+        with self.assertRaisesRegex(IndexError, "Subtitle ID out of range"):
+            self.wrapper.update_section((3, 0, "Error"))
+        with self.assertRaisesRegex(IndexError, "Subtitle ID out of range"):
+            self.wrapper.update_section((-1, 0, "Error"))
+
+    def test_update_section_invalid_section_index(self):
+        """Test updating with an invalid section index within an event."""
+        # Event 0 ("First line.") only has one section (index 0)
+        with self.assertRaises(IndexError):  # Raised by SectionedEvent.set_text
+            self.wrapper.update_section((0, 1, "Error"))
+        with self.assertRaises(IndexError):
+            self.wrapper.update_section((0, -1, "Error"))
+
+    def test_flush_no_changes(self):
+        """Test flush when no changes have been made."""
+        original_texts = [e.text for e in self.wrapper._inner]
+        self.wrapper.flush()
+        new_texts = [e.text for e in self.wrapper._inner]
+        self.assertEqual(original_texts, new_texts)
+        for section in self.wrapper._sections:
+            self.assertFalse(section.dirty)
+
+    def test_flush_with_changes(self):
+        """Test flush after updating sections."""
+        # Update event 0, section 0
+        self.wrapper.update_section((0, 0, "Modified first line."))
+        # Update event 1, section 0 and 2
+        # Event 1 text: "Second {\\i1}line{\\i0}." -> sections: [("Second ", False), ("{\\i1}", True), ("line", False), ("{\\i0}", True), (".", False)]
+        self.wrapper.update_section((1, 0, "MODIFIED "))
+        self.wrapper.update_section((1, 2, "LINE"))  # Update "line" part
+        self.wrapper.update_section((1, 4, "!"))  # Update "." part
+
+        self.assertTrue(self.wrapper[0].dirty)
+        self.assertTrue(self.wrapper[1].dirty)
+        self.assertFalse(self.wrapper[2].dirty)  # Event 2 was not touched
+
+        self.wrapper.flush()
+
+        # Verify underlying SSAFile events are updated
+        self.assertEqual(self.wrapper._inner[0].text, "Modified first line.")
+        # Expected combined text for event 1: "MODIFIED " + "{\\i1}" + "LINE" + "{\\i0}" + "!"
+        self.assertEqual(self.wrapper._inner[1].text, "MODIFIED {\\i1}LINE{\\i0}!")
+        self.assertEqual(self.wrapper._inner[2].text, "Early line.")  # Unchanged
+
+        # Verify dirty flags are reset
+        self.assertFalse(self.wrapper[0].dirty)
+        self.assertFalse(self.wrapper[1].dirty)
+        self.assertFalse(self.wrapper[2].dirty)
+
+    def test_to_string(self):
+        """Test converting the wrapper to a string, implicitly testing flush."""
+        # Update event 0, section 0
+        self.wrapper.update_section((0, 0, "Modified first line."))
+        self.assertTrue(self.wrapper[0].dirty)
+
+        # Use 'srt' format for simpler output check, though SSA/ASS is the native format
+        output_string = self.wrapper.to_string("srt", encoding="utf-8")
+
+        # Check if the output contains the modified text (in SRT format)
+        self.assertIn("Modified first line.", output_string)
+        # Check if the original second line is still there (wasn't modified)
+        # Note: Formatting tags are stripped in SRT conversion by pysubs2
+        self.assertIn("Second <i>line</i>.", output_string)
+        # Check if the dirty flag was reset by to_string (due to flush)
+        self.assertFalse(self.wrapper[0].dirty)
+
+        # Test with native format 'ass'
+        output_string_ass = self.wrapper.to_string("ass", encoding="utf-8")
+        self.assertIn(
+            "Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,Modified first line.",
+            output_string_ass,
+        )
+        self.assertIn(
+            "Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,Second {\\i1}line{\\i0}.",
+            output_string_ass,
+        )
+
+    def test_getattr_existing(self):
+        """Test accessing existing attributes of the underlying SSAFile."""
+        self.assertEqual(self.wrapper.info["Title"], "Test Title")
+        self.assertIn("Default", self.wrapper.styles)
+        self.assertEqual(len(self.wrapper.events), 3)  # Accessing 'events' property
+
+    def test_getattr_non_existing(self):
+        """Test accessing non-existing attributes."""
+        with self.assertRaises(AttributeError):
+            _ = self.wrapper.non_existent_attribute
 
 
 class TestSubtitleFormatSSA(unittest.TestCase):
@@ -81,17 +408,17 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
             Dialogue(id="0.0", content="Hello, world!", style="Default"),
             Dialogue(id="1.0", content="This is a second subtitle.", style="Default"),
             Dialogue(
-                id="2.4",
+                id="2.2",
                 content="Third ",
                 style="Default",
             ),
             Dialogue(
-                id="2.6",
+                id="2.4",
                 content="subtitle",
                 style="Default",
             ),
             Dialogue(
-                id="2.8",
+                id="2.6",
                 content=" with formatting.",
                 style="Default",
             ),
@@ -109,9 +436,9 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         expected = [
             Dialogue(id="0.0", content="Modified first subtitle", style="Default"),
             Dialogue(id="1.0", content="Modified second subtitle", style="Default"),
-            Dialogue(id="2.4", content="Modified ", style="Default"),
-            Dialogue(id="2.6", content="SUBTITLE", style="Default"),
-            Dialogue(id="2.8", content=" with formatting.", style="Default"),
+            Dialogue(id="2.2", content="Modified ", style="Default"),
+            Dialogue(id="2.4", content="SUBTITLE", style="Default"),
+            Dialogue(id="2.6", content=" with formatting.", style="Default"),
             Dialogue(id="3.0", content="Modified fourth \nsubtitle", style="Default"),
         ]
 
@@ -174,7 +501,6 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
                 ("{\\i1}", True),
                 ("world", False),
                 ("{\\i0}", True),
-                ("", True),
             ],
         )
 
@@ -184,7 +510,6 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         self.assertEqual(
             result,
             [
-                ("", True),
                 ("{\\an8}", True),
                 ("Hello ", False),
                 ("{\\i1}", True),
@@ -194,14 +519,13 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
                 ("{\\b1}", True),
                 ("world", False),
                 ("{\\b0}", True),
-                ("", True),
             ],
         )
 
         # Test with empty string
         empty_text = ""
         result = _split_by_formatting(empty_text)
-        self.assertEqual(result, [("", True)])
+        self.assertEqual(result, [])
 
         # Test with only formatting tags
         only_tags = "{\\i1}{\\b1}{\\u1}"
@@ -209,13 +533,9 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         self.assertEqual(
             result,
             [
-                ("", True),
                 ("{\\i1}", True),
-                ("", True),
                 ("{\\b1}", True),
-                ("", True),
                 ("{\\u1}", True),
-                ("", True),
             ],
         )
 
@@ -225,48 +545,10 @@ Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character
         self.assertEqual(
             result,
             [
-                ("", True),
                 ("{\\pos(400,570)}", True),
                 ("Positioned text", False),
             ],
         )
-
-    def test_update_substring(self):
-        """Test the _update_substring function with various formatting scenarios."""
-
-        # Test with no formatting
-        plain_text = "Hello world"
-        updates = [(0, "Goodbye world")]
-        result = _update_substring(plain_text, updates)
-        self.assertEqual(result, "Goodbye world")
-
-        # Test with single formatting tag
-        formatted_text = "Hello {\\i1}world{\\i0}"
-        updates = [(0, "Goodbye "), (2, "everyone")]
-        result = _update_substring(formatted_text, updates)
-        self.assertEqual(result, "Goodbye {\\i1}everyone{\\i0}")
-
-        # Test with multiple formatting tags
-        complex_text = "{\\an8}Hello {\\i1}beautiful{\\i0} {\\b1}world{\\b0}"
-        updates = [(2, "Hi "), (4, "wonderful"), (6, " "), (8, "people")]
-        result = _update_substring(complex_text, updates)
-        self.assertEqual(result, "{\\an8}Hi {\\i1}wonderful{\\i0} {\\b1}people{\\b0}")
-
-        # Test with position tags
-        position_text = "{\\pos(400,570)}Positioned text"
-        updates = [(2, "Modified text")]
-        result = _update_substring(position_text, updates)
-        self.assertEqual(result, "{\\pos(400,570)}Modified text")
-
-        # Test with empty updates
-        no_updates_text = "Hello {\\i1}world{\\i0}"
-        updates = []
-        result = _update_substring(no_updates_text, updates)
-        self.assertEqual(result, "Hello {\\i1}world{\\i0}")
-
-        # Test with out of range index
-        with self.assertRaises(IndexError):
-            _update_substring("Hello world", [(5, "test")])
 
     def test_id_roundtrip(self):
         """Test the _serialize_id and _deserialize_id functions."""
