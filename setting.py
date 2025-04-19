@@ -18,6 +18,7 @@ class _Setting(BaseSettings):
 
     # LLM setting
     llm_model: str = "gpt-3.5-turbo"
+    llm_model_name_alias: Optional[str] = None
     llm_extra_prompt: str = ""
     max_output_token: int = 5_000
     max_input_token: int = 500_000
@@ -42,6 +43,16 @@ class _Setting(BaseSettings):
         Debug mode.
         """
         return self.log_level == "debug"
+
+    @property
+    def llm_model_name(self) -> str:
+        """
+        LLM model name. Used for cost calculation.
+        It can be different from the model name used in the API call.
+        """
+        if self.llm_model_name_alias:
+            return self.llm_model_name_alias
+        return self.llm_model
 
 
 def load_setting_with_env_file(env_file: str) -> _Setting:

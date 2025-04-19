@@ -112,7 +112,7 @@ class TaskRequest(Generic[ResponseDTO]):
         try:
             CostTracker().add_cost(
                 completion_cost(
-                    model=get_setting().llm_model,
+                    model=get_setting().llm_model_name,
                     prompt="\n".join([i["content"] for i in self._task.messages()]),
                     completion=completion,
                 )
