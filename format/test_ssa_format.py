@@ -362,6 +362,7 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,Hello, world!
 Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,This is a second subtitle.
 Dialogue: 0,0:00:11.00,0:00:15.00,Default,,0,0,0,,{{\\pos(400,570)}}{comment}Third {\\i}subtitle{\\i} with formatting.
 Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,,Line with \\Nnewline character.
+Dialogue: 0,0:00:16.00,0:00:20.00,Default,,0,0,0,, 
 """
         # Create temporary SSA and ASS files for testing
         self.temp_ssa_file = tempfile.NamedTemporaryFile(suffix=".ssa", delete=False)

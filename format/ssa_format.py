@@ -201,7 +201,7 @@ class SubtitleFormatSSA(SubtitleFormat):
             (idx, sid, inner_section_text)
             for idx, outer_section in self._raw_format.get_sections()
             for sid, inner_section_text, is_formatting in outer_section.get_sections()
-            if not is_formatting
+            if (not is_formatting) and len(inner_section_text.strip()) > 0
         ]
         sections = _backward_dedpulicate(sections, range=16)
 
