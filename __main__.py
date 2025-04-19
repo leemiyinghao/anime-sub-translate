@@ -60,4 +60,8 @@ if __name__ == "__main__":
         translate(args.path, args.target_language, tasks)
 
         logger.info("Translation completed.")
-        logger.info(f"Estimated cost: {CostTracker().get_cost():.5f} USD")
+        cost = CostTracker().get_cost()
+        if cost > 0:
+            logger.info(f"Estimated cost: {cost:.5f} USD")
+        else:
+            logger.info("No cost information available.")
